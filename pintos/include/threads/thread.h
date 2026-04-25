@@ -107,6 +107,9 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	//일어날 시간 정해줄 변수
+	uint64_t wakeup_tick;
 };
 
 /* If false (default), use round-robin scheduler.
