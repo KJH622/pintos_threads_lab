@@ -81,6 +81,7 @@ struct thread {
 	enum thread_status status;          /* 스레드 상태. */
 	char name[16];                      /* 디버깅용 스레드 이름. */
 	int priority;                       /* 스레드 우선순위. */
+   int64_t outTick;                    /* 스레드 wakeup time. */
 
 	/* thread.c와 synch.c가 공유하는 필드. */
 	struct list_elem elem;              /* 리스트 원소. */
@@ -98,6 +99,7 @@ struct thread {
 	struct intr_frame tf;               /* 스레드 전환에 필요한 실행 문맥 정보. */
 	unsigned magic;                     /* 스택 오버플로 감지용 값. */
 };
+
 
 /* false이면 기본 round-robin 스케줄러를 사용한다.
    true이면 multi-level feedback queue scheduler를 사용한다.

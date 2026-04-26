@@ -20,6 +20,8 @@
 /* OS 부팅 이후 누적된 타이머 tick 수. */
 static int64_t ticks;
 
+static struct list sleep_list;
+
 /* 타이머 tick 하나 동안 실행할 수 있는 busy-wait 반복 횟수.
    timer_calibrate()에서 초기화된다. */
 static unsigned loops_per_tick;
@@ -96,11 +98,16 @@ timer_elapsed (int64_t then) {
           output : 반환값은 없으며 현재 스레드가 CPU를 양보하거나 이후 구현에서 block 상태가 된다. */
 void
 timer_sleep (int64_t ticks) {
+	// 실행 시점에서의 누적 tick 수
 	int64_t start = timer_ticks ();
+	// 현재 스레드를 저장 및 목표시간 저장
+	struct thread *cur_thd = thread_current();
+	// cur_thd->outTick = (start+ticks);
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	// sleep_list 뒤에 넣고 thread block
+	list_push_back(&sleep_list, &cur_thd->elem);
+	// list_insert_ordered(&sleep_list, &cur_thd->elem, cur_thd->outTick, NULL);
+	thread_block();
 }
 
 /* 기능 : 현재 스레드 실행을 약 MS 밀리초 동안 지연시킨다.
@@ -141,7 +148,15 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	thread_tick ();
+
+	// 현재 스레드 -> sleep list -> outtick
+	// 루프,  
+	// while
+	if(timer_ticks > &thd->outTick) {  // 반복 루프 종료 조건으로
+	struct thread *thd = list_entry(list_pop_front(&sleep_list), struct thread, elem);
+	
+		thread_unblock(thd);
+	}
 }
 
 /* 기능 : 지정한 반복 횟수가 timer tick 하나를 넘길 만큼 오래 걸리는지 검사한다.
