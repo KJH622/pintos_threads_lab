@@ -32,6 +32,16 @@ static void real_time_sleep (int64_t num, int32_t denom);
 //자는 리스트 여기에 만듦
 static struct list sleep_list; //////////////////////////추가함/////////////////////////////
 static void thread_wakeup (int64_t now);
+static bool
+wakeup_less(const struct list_elem *a,
+            const struct list_elem *b,
+            void *aux UNUSED) {
+  struct thread *ta = list_entry(a, struct thread, elem);
+  struct thread *tb = list_entry(b, struct thread, elem);
+
+  return ta->wakeup_tick < tb->wakeup_tick;
+}
+
 
 
 
@@ -116,7 +126,8 @@ timer_sleep (int64_t ticks) {
 	// sleep_list에 넣음
 	// thread_block()
 	curr-> wakeup_tick = (start + ticks);
-	list_push_back (&sleep_list, &curr->elem);
+	// list_push_back (&sleep_list, &curr->elem);
+	list_insert_ordered(&sleep_list, &curr -> elem, wakeup_less, NULL);
 	thread_block();
 
 	intr_set_level (old_level);
@@ -152,7 +163,17 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 
 	//자는애 시간 다 되면 깨워야지
-	thread_wakeup(ticks);
+	// thread_wakeup(ticks);
+	while (!list_empty(&sleep_list)) {
+	struct thread *t = list_entry(list_begin(&sleep_list),
+									struct thread, elem);
+
+	if (t->wakeup_tick > ticks)
+		break;
+
+	list_remove(&t->elem);
+	thread_unblock(t);
+	}
 
 	thread_tick ();
 }
