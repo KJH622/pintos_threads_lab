@@ -62,6 +62,15 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static bool
+priori_less (	const struct list_elem *a,
+				const struct list_elem *b,
+				void *aux UNUSED) {
+	struct thread *pa = list_entry(a, struct thread, elem);
+	struct thread *pb = list_entry(b, struct thread, elem);
+
+	return pa->priority > pb->priority;
+}		
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -241,6 +250,7 @@ thread_unblock (struct thread *t) {
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
 	list_push_back (&ready_list, &t->elem);
+	// list_insert_ordered(&ready_list, &t->elem, priori_less,NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -304,6 +314,8 @@ thread_yield (void) {
 	old_level = intr_disable ();
 	if (curr != idle_thread)
 		list_push_back (&ready_list, &curr->elem);
+	// list_insert_ordered(&ready_list, &curr->elem, priori_less,NULL);
+
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -420,8 +432,11 @@ static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	else {
+		struct thread *max_thd = list_entry(list_max(&ready_list ,priori_less,NULL),struct thread, elem);
+		// return list_entry (list_pop_front (&ready_list), struct thread, elem);
+		list_remove(max_thd);
+	}
 }
 
 /* Use iretq to launch the thread */
