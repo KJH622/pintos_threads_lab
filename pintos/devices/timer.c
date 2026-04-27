@@ -150,6 +150,8 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 									//4. 그래서 맨 앞이 아직 아니면 뒤쪽 스레드들도 전부 아직 아님
 		list_pop_front (&sleep_list);
 		thread_unblock (t);
+		if (t->priority > thread_current ()->priority)
+			intr_yield_on_return ();
 	}
 	thread_tick ();
 }
