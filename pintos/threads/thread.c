@@ -62,6 +62,8 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static bool has_higher_ready_thread (void);
+
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -239,6 +241,8 @@ thread_block (void) {
 void
 thread_unblock (struct thread *t) {
 	enum intr_level old_level;
+	bool should_yield = false;
+	struct thread *curt = thread_current ();
 
 	ASSERT (is_thread (t));
 
@@ -246,7 +250,16 @@ thread_unblock (struct thread *t) {
 	ASSERT (t->status == THREAD_BLOCKED);
 	list_push_back (&ready_queues[t->priority], &t->elem);
 	t->status = THREAD_READY;
+	if (t->priority > curt->priority)should_yield = true;
+	
 	intr_set_level (old_level);
+
+	if (should_yield) {
+		if (intr_context ())
+			intr_yield_on_return ();
+		else
+			thread_yield ();
+	}
 }
 
 /* Returns the name of the running thread. */
@@ -316,6 +329,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	if (has_higher_ready_thread ())thread_yield ();
+	
 }
 
 /* Returns the current thread's priority. */
@@ -431,6 +446,19 @@ next_thread_to_run (void) {
 
 	return idle_thread;
 }
+
+static bool
+has_higher_ready_thread (void) {
+	int current_priority = thread_current ()->priority;
+
+	for (int priority = PRI_MAX; priority > current_priority; priority--) {
+		if (!list_empty (&ready_queues[priority]))
+			return true;
+	}
+
+	return false;
+}
+
 
 /* Use iretq to launch the thread */
 void
