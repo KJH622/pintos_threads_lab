@@ -26,7 +26,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+static struct list ready_queues[PRI_MAX + 1];
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -107,7 +107,11 @@ thread_init (void) {
 
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
-	list_init (&ready_list);
+	for (int i = PRI_MIN; i <= PRI_MAX; i++)
+	{
+		list_init (&ready_queues[i]);
+	}
+	
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -240,7 +244,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_push_back (&ready_queues[t->priority], &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -303,7 +307,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_push_back (&ready_queues[curr->priority], &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -418,10 +422,14 @@ init_thread (struct thread *t, const char *name, int priority) {
    idle_thread. */
 static struct thread *
 next_thread_to_run (void) {
-	if (list_empty (&ready_list))
-		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	for (int priority = PRI_MAX; priority >= PRI_MIN; priority--) {
+		if (!list_empty (&ready_queues[priority])) {
+			return list_entry (list_pop_front (&ready_queues[priority]),
+			                   struct thread, elem);
+		}
+	}
+
+	return idle_thread;
 }
 
 /* Use iretq to launch the thread */
