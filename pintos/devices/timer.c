@@ -95,8 +95,21 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+    
+    if (ticks <= 0) { // 1. ticks <= 0 -> 리턴 (void)
+        return;
+    }
+
+   thread_current()->wakeup_tick = start + ticks; // 2. wakeup_tick 설정
+   
+   enum intr_level old_level = intr_disable(); // 3. 인터럽트 끄기 (old_level 저장)
+
+   list_insert_ordered(&sleep_list, &thread_current()->elem, wakeup_tick_less, NULL); // 4. list_insert_ordered() 삽입
+   // list, list_elem, func, aux
+
+   thread_block(); // 5. thread_block()
+
+   intr_set_level(old_level); // 6. 인터럽트 복원
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -128,6 +141,24 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+    // TODO 1. sleep_list의 맨 앞 원소부터 순서대로 본다
+    while (!list_empty(&sleep_list)) {
+        struct thread *t = list_entry(list_front(&sleep_list), struct thread, elem);
+
+        // TODO 2-1. t->wakeup_tick <= ticks 이면?
+        // → sleep_list에서 제거하고 thread_unblock(t)
+        if (t->wakeup_tick <= ticks) {
+            list_pop_front(&sleep_list);
+            thread_unblock(t);
+        }
+
+        // TODO 2-2. 아니면?
+        // → break
+        else {
+            break;
+        }
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -185,4 +216,15 @@ real_time_sleep (int64_t num, int32_t denom) {
 		ASSERT (denom % 1000 == 0);
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
+}
+
+static bool
+wakeup_tick_less (const struct list_elem *a,
+                  const struct list_elem *b,
+                  void *aux UNUSED) // a elem의 thread와 b elem의 thread 비교
+{
+    struct thread *ta = list_entry(a, struct thread, elem);
+    struct thread *tb = list_entry(b, struct thread, elem);
+
+    return ta->wakeup_tick < tb->wakeup_tick;
 }
