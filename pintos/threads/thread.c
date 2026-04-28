@@ -113,8 +113,8 @@ thread_init (void) {
 	{
 		list_init (&ready_queues[i]);
 	}
-	
 	list_init (&destruction_req);
+
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -325,6 +325,22 @@ thread_set_priority (int new_priority) {
 	
 }
 
+void
+thread_update_priority (struct thread *t, int new_priority)
+{
+	enum intr_level old_level = intr_disable ();
+
+	if (t->status == THREAD_READY) {
+		list_remove (&t->elem);
+		t->priority = new_priority;
+		list_push_back (&ready_queues[t->priority], &t->elem);
+	} else {
+		t->priority = new_priority;
+	}
+
+	intr_set_level (old_level);
+}
+
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) {
@@ -420,6 +436,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->base_priority = priority;
+	t->waiting_lock = NULL;
+	list_init (&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

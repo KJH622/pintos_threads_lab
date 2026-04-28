@@ -51,8 +51,45 @@ thread_priority_more (const struct list_elem *a,const struct list_elem *b,void *
 	return ta->priority > tb->priority;
 }
 
+static bool
+donation_priority_more (const struct list_elem *a,const struct list_elem *b,void *aux UNUSED)
+{
+	struct thread *ta = list_entry (a, struct thread, donation_elem);
+	struct thread *tb = list_entry (b, struct thread, donation_elem);
 
+	return ta->priority > tb->priority;
+}
 
+static void
+remove_donation_by_lock (struct lock *lock)
+{
+	struct list_elem *e = list_begin (&thread_current ()->donations);
+
+	while (e != list_end (&thread_current ()->donations)) {
+		struct thread *t = list_entry (e, struct thread, donation_elem);
+
+		if (t->waiting_lock == lock)
+			e = list_remove (e);//삭제된 원소의 다음 원소를 반환
+		else
+			e = list_next (e);
+	}
+}
+
+static void
+refresh_priority (struct thread *t)
+{
+	int new_priority = t->base_priority;
+	if (!list_empty (&t->donations)) {
+		list_sort (&t->donations, donation_priority_more, NULL);
+
+		struct thread *donor = list_entry (list_front (&t->donations),
+		                                   struct thread, donation_elem);
+
+		if (donor->priority > new_priority)
+			new_priority = donor->priority;
+	}
+	thread_update_priority (t, new_priority);
+}
 
 
 
@@ -216,8 +253,20 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	struct thread *cur = thread_current ();
+
+	if (lock->holder != NULL && lock->holder->priority < cur->priority) {
+		cur->waiting_lock = lock;
+		list_insert_ordered (&lock->holder->donations,
+		                     &cur->donation_elem,
+		                     donation_priority_more,
+		                     NULL);
+		thread_update_priority (lock->holder, cur->priority);
+	}
+
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	cur->waiting_lock = NULL;
+	lock->holder = cur;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -249,6 +298,9 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+
+	remove_donation_by_lock (lock);
+	refresh_priority (thread_current ());
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
