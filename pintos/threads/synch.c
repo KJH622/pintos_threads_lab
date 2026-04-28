@@ -257,10 +257,7 @@ lock_acquire (struct lock *lock) {
 
 	if (lock->holder != NULL && lock->holder->priority < cur->priority) {
 		cur->waiting_lock = lock;
-		list_insert_ordered (&lock->holder->donations,
-		                     &cur->donation_elem,
-		                     donation_priority_more,
-		                     NULL);
+		list_push_back (&lock->holder->donations, &cur->donation_elem);
 		thread_update_priority (lock->holder, cur->priority);
 	}
 
