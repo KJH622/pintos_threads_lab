@@ -133,7 +133,6 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
-bool entry_priority(const struct list_elem *, const struct list_elem *, void *aux);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
