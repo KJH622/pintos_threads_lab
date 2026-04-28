@@ -13,7 +13,6 @@
 *.hex
 *.dis
 *.dump
-.test_status
 
 # 빌드 디렉터리
 **/build/
