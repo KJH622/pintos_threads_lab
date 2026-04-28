@@ -26,7 +26,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_queues[PRI_MAX + 1];
+static struct list ready_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -62,8 +62,6 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-static bool has_higher_ready_thread (void);
-
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -109,11 +107,7 @@ thread_init (void) {
 
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
-	for (int i = PRI_MIN; i <= PRI_MAX; i++)
-	{
-		list_init (&ready_queues[i]);
-	}
-	
+	list_init (&ready_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -212,8 +206,6 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-	if (t->priority > thread_current ()->priority)
-		thread_yield ();
 
 	return tid;
 }
@@ -248,10 +240,9 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_queues[t->priority], &t->elem);
+	list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
-
 }
 
 /* Returns the name of the running thread. */
@@ -312,7 +303,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_queues[curr->priority], &curr->elem);
+		list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -321,8 +312,6 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
-	if (has_higher_ready_thread ())thread_yield ();
-	
 }
 
 /* Returns the current thread's priority. */
@@ -429,28 +418,11 @@ init_thread (struct thread *t, const char *name, int priority) {
    idle_thread. */
 static struct thread *
 next_thread_to_run (void) {
-	for (int priority = PRI_MAX; priority >= PRI_MIN; priority--) {
-		if (!list_empty (&ready_queues[priority])) {
-			return list_entry (list_pop_front (&ready_queues[priority]),
-			                   struct thread, elem);
-		}
-	}
-
-	return idle_thread;
+	if (list_empty (&ready_list))
+		return idle_thread;
+	else
+		return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
-
-static bool
-has_higher_ready_thread (void) {
-	int current_priority = thread_current ()->priority;
-
-	for (int priority = PRI_MAX; priority > current_priority; priority--) {
-		if (!list_empty (&ready_queues[priority]))
-			return true;
-	}
-
-	return false;
-}
-
 
 /* Use iretq to launch the thread */
 void
