@@ -62,28 +62,30 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-
 static bool
-pri_more (const struct list_elem *a,
-        	const struct list_elem *b,
-            void *aux UNUSED) {
-	struct thread *ta = list_entry (a, struct thread, elem);
-	struct thread *tb = list_entry (b, struct thread, elem);
+priori_less (	const struct list_elem *a,
+				const struct list_elem *b,
+				void *aux UNUSED) {
+	struct thread *pa = list_entry(a, struct thread, elem);
+	struct thread *pb = list_entry(b, struct thread, elem);
 
-	return ta->priority  > tb->priority ;
+	return pa->priority > pb->priority;
 }
 
-void thread_yield_if_needed (void) {
-  if (!list_empty (&ready_list)) {
-    struct thread *t = list_entry (list_begin (&ready_list),
-                                   struct thread, elem);
+static void
+chk_thdyield(void) {
+	if(list_empty (&ready_list))
+		return;
+	struct thread *cur_thd = thread_current();
+	struct thread *next_thd = list_entry(list_front(&ready_list), struct thread, elem);
 
-    if (t->priority > thread_current ()->priority) {
-      thread_yield ();
-    }
-  }
+	if(cur_thd->priority < next_thd->priority) {
+		if(intr_context())
+			intr_yield_on_return();
+		else
+			thread_yield();
+	}
 }
-
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -229,9 +231,17 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
-	if(t -> priority > thread_current() -> priority){
-		thread_yield();
+	struct thread *cur_thd = thread_current();
+
+	if(cur_thd->priority < t->priority) {
+		if(intr_context()) {
+			intr_yield_on_return();
+		}
+		else {
+			thread_yield();
+		}
 	}
+
 
 	return tid;
 }
@@ -266,11 +276,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	// list_push_back (&ready_list, &t->elem);
-
-	list_insert_ordered (&ready_list, &t->elem, pri_more, NULL);
-
-
+	list_insert_ordered(&ready_list, &t->elem, priori_less,NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -333,9 +339,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		// list_push_back (&ready_list, &curr->elem);
-
-		list_insert_ordered (&ready_list, &curr->elem, pri_more, NULL);
+	list_insert_ordered(&ready_list, &curr->elem, priori_less,NULL);
 
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
@@ -345,7 +349,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
-	thread_yield_if_needed ();
+	chk_thdyield();
 }
 
 /* Returns the current thread's priority. */
@@ -454,9 +458,12 @@ static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
+	else {
 		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	}
 }
+
+
 
 /* Use iretq to launch the thread */
 void
