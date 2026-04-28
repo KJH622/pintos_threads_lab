@@ -207,6 +207,10 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+   if(lock->holder != NULL && ((thread_current()-> priority) > (lock-> holder-> priority))){
+      lock->holder->priority = thread_current()-> priority;
+   }
+
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
 }
@@ -241,6 +245,8 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+   thread_current()-> priority = thread_current()->original_priority;
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -262,7 +268,7 @@ struct semaphore_elem {
 };
 
 static bool
-sema_more (const struct list_elem *a,
+cond_waiters_sema_waiters_elem_thread_pri_more (const struct list_elem *a,
                 const struct list_elem *b,
                 void *aux UNUSED) {
   struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
@@ -337,7 +343,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters)){
-		list_sort(&cond->waiters, sema_more, NULL);
+		list_sort(&cond->waiters, cond_waiters_sema_waiters_elem_thread_pri_more, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
 	}
