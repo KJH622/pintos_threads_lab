@@ -62,7 +62,42 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-static bool has_higher_ready_thread (void);
+
+static bool
+pri_more (const struct list_elem *a,
+        	const struct list_elem *b,
+            void *aux UNUSED) {
+	struct thread *ta = list_entry (a, struct thread, elem);
+	struct thread *tb = list_entry (b, struct thread, elem);
+
+	return ta->priority  > tb->priority ;
+}
+
+void thread_yield_if_needed (void) {
+  if (!list_empty (&ready_list)) {
+    struct thread *t = list_entry (list_begin (&ready_list),
+                                   struct thread, elem);
+
+    if (t->priority > thread_current ()->priority) {
+		if(!intr_context ()){
+    		thread_yield ();
+		}
+		else{
+			intr_yield_on_return ();
+		}
+    }
+  }
+}
+
+static bool
+donation_pri_more (const struct list_elem *a,
+        	const struct list_elem *b,
+            void *aux UNUSED) {
+	struct thread *ta = list_entry (a, struct thread, donation_elem);
+	struct thread *tb = list_entry (b, struct thread, donation_elem);
+
+	return ta->priority  > tb->priority ;
+}
 
 
 /* Returns true if T appears to point to a valid thread. */
@@ -418,6 +453,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (name != NULL);
 
 	memset (t, 0, sizeof *t);
+    t->original_priority = priority; // original_priority 초기화 값
+    list_init(&t->donations);
+    t->wait_on_lock = NULL;
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
