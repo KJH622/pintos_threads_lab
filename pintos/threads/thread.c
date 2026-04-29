@@ -320,6 +320,11 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+
+	struct thread *cur_thd = thread_current();
+	
+
+	
 	thread_current ()->priority = new_priority;
 	if (has_higher_ready_thread ())thread_yield ();
 	
@@ -419,6 +424,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->base_priority = priority;
 	t->magic = THREAD_MAGIC;
 }
 
