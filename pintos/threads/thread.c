@@ -355,19 +355,12 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->original_priority = new_priority;
 
-	if (list_empty (&thread_current ()->donations)) {
-		thread_current ()->priority = new_priority;
-	} else {
-		list_sort(&thread_current()-> donations, donation_pri_more, NULL);
-      	struct thread *top_thread = list_entry(list_front(&thread_current()-> donations), struct thread, donation_elem);
-
-		if(thread_current()-> priority < top_thread -> priority){
-			thread_current()-> priority = top_thread -> priority;
-		}
-	}
-	thread_yield_if_needed ();
+	struct thread *cur_thd = thread_current();
+	
+	cur_thd->base_priority = new_priority;
+	if (has_higher_ready_thread ())thread_yield ();
+	
 }
 
 /* Returns the current thread's priority. */
@@ -467,10 +460,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
-	t->original_priority = priority;
-	list_init (&t->donations);
-	t->wait_on_lock = NULL;
+	t->base_priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->wait_lock = NULL;
+	list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

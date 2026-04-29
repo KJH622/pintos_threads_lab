@@ -45,7 +45,7 @@ void
 test_priority_donate_chain (void) 
 {
   int i;  
-  struct lock locks[NESTING_DEPTH - 1];
+  struct lock locks[NESTING_DEPTH - 1]; // 주소값
   struct lock_pair lock_pairs[NESTING_DEPTH];
 
   /* This test does not work with the MLFQS. */
