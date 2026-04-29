@@ -218,12 +218,24 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!lock_held_by_current_thread (lock));
 
    if(lock->holder != NULL){
-      list_push_back(&(lock->holder->donations), &(thread_current() -> donation_elem));
       thread_current() -> wait_on_lock = lock;
+      list_push_back(&(lock->holder->donations), &(thread_current() -> donation_elem));
 
       if((thread_current()-> priority) > (lock-> holder-> priority)){
+
          lock->holder->priority = thread_current()-> priority;
-      }
+
+         struct lock *l = lock;
+         while (l != NULL && l->holder != NULL) {
+
+            if (l->holder->priority < thread_current()->priority) {
+               l->holder->priority = thread_current()->priority;
+            }
+            l = l->holder->wait_on_lock;
+         }
+
+
+      }      
    }
 
 	sema_down (&lock->semaphore);
