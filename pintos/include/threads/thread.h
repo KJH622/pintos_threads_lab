@@ -94,6 +94,10 @@ struct thread {
 	int64_t wakeup_tick;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+    int original_priority;
+    struct list donations;
+    struct list_elem donation_elem;
+    struct lock *wait_on_lock;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -108,6 +112,8 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 };
+
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
