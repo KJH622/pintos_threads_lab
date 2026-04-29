@@ -79,9 +79,24 @@ void thread_yield_if_needed (void) {
                                    struct thread, elem);
 
     if (t->priority > thread_current ()->priority) {
-      thread_yield ();
+		if(!intr_context ()){
+    		thread_yield ();
+		}
+		else{
+			intr_yield_on_return ();
+		}
     }
   }
+}
+
+static bool
+donation_pri_more (const struct list_elem *a,
+        	const struct list_elem *b,
+            void *aux UNUSED) {
+	struct thread *ta = list_entry (a, struct thread, donation_elem);
+	struct thread *tb = list_entry (b, struct thread, donation_elem);
+
+	return ta->priority  > tb->priority ;
 }
 
 
@@ -344,7 +359,18 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->original_priority = new_priority;
+
+	if (list_empty (&thread_current ()->donations)) {
+		thread_current ()->priority = new_priority;
+	} else {
+		list_sort(&thread_current()-> donations, donation_pri_more, NULL);
+      	struct thread *top_thread = list_entry(list_front(&thread_current()-> donations), struct thread, donation_elem);
+
+		if(thread_current()-> priority < top_thread -> priority){
+			thread_current()-> priority = top_thread -> priority;
+		}
+	}
 	thread_yield_if_needed ();
 }
 
@@ -443,6 +469,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->original_priority = priority;
+	list_init (&t->donations);
+	t->wait_on_lock = NULL;
 	t->magic = THREAD_MAGIC;
 }
 

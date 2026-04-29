@@ -109,6 +109,9 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 
 	int original_priority ;
+	struct list donations;
+	struct list_elem donation_elem;
+	struct lock *wait_on_lock;
 };
 
 /* If false (default), use round-robin scheduler.
