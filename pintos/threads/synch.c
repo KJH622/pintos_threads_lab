@@ -218,10 +218,14 @@ lock_acquire (struct lock *lock) {
 
     if (lock->holder != NULL && lock->holder->priority < thread_current()->priority) {
         lock->holder->priority = thread_current()->priority;
+
+        list_push_back(&(lock->holder->donations), &(thread_current()->donation_elem));
+        thread_current()->wait_on_lock = lock;
     }
 
     /* acquire1에서는 lock->holder는 끝까지 main */
 	sema_down (&lock->semaphore); // acquire1이 여기서 block. 아래로 못 내려감.
+    thread_current()->wait_on_lock = NULL;
 	lock->holder = thread_current (); // 이 줄은 acquire1이 절대 실행 못 함.
 }
 
@@ -255,7 +259,27 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-    thread_current()->priority = thread_current()->original_priority; // ← 1. 먼저 복원
+    struct list_elem *e;
+    struct thread *t;
+
+    for (e = list_begin(&thread_current()->donations); e != list_end(&thread_current()->donations); ) { // 아직 끝 아니면 계속
+        t = list_entry(e, struct thread, donation_elem); // struct thread의 시작 주소를 알기 위해
+        if (t->wait_on_lock == lock) {
+            e = list_remove(e);
+        } else {
+            e = list_next(e);
+        }
+    }
+
+    int new_priority = thread_current()->original_priority;
+
+    for (e = list_begin(&thread_current()->donations); e != list_end(&thread_current()->donations); e = list_next(e)) {
+        t = list_entry(e, struct thread, donation_elem);
+        if (t->priority > new_priority) {
+            new_priority = t->priority;
+        } 
+    }
+    thread_current()->priority = new_priority;
 
 	lock->holder = NULL; // ← 2. 그 다음 NULL
 	sema_up (&lock->semaphore); // ← 3. 마지막 깨우기
