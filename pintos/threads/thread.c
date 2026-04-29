@@ -323,9 +323,7 @@ thread_set_priority (int new_priority) {
 
 	struct thread *cur_thd = thread_current();
 	
-
-	
-	thread_current ()->priority = new_priority;
+	cur_thd->base_priority = new_priority;
 	if (has_higher_ready_thread ())thread_yield ();
 	
 }
@@ -426,6 +424,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->base_priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->wait_lock = NULL;
+	list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
