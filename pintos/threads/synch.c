@@ -43,12 +43,12 @@
    thread, if any). */
 
 static bool
-thread_priority_more (const struct list_elem *a,const struct list_elem *b,void *aux UNUSED) 
+thread_priority_less (const struct list_elem *a,const struct list_elem *b,void *aux UNUSED) 
 {
 	struct thread *ta = list_entry (a, struct thread, elem);
 	struct thread *tb = list_entry (b, struct thread, elem);
 
-	return ta->priority > tb->priority;
+	return ta->priority < tb->priority;
 }
 
 static bool
@@ -119,7 +119,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-	list_insert_ordered (&sema->waiters,&thread_current ()->elem,thread_priority_more,NULL);
+		list_push_back (&sema->waiters, &thread_current ()->elem);
 		thread_block ();
 	}
 	sema->value--;
@@ -165,8 +165,10 @@ sema_up (struct semaphore *sema) {
 	old_level = intr_disable ();
 
 	if (!list_empty (&sema->waiters)) {
-		unblocked = list_entry (list_pop_front (&sema->waiters),
-		                        struct thread, elem);
+		struct list_elem *max = list_max (&sema->waiters,thread_priority_less,NULL);
+
+		list_remove (max);
+		unblocked = list_entry (max, struct thread, elem);
 		thread_unblock (unblocked);
 	}
 
@@ -255,10 +257,25 @@ lock_acquire (struct lock *lock) {
 
 	struct thread *cur = thread_current ();
 
-	if (lock->holder != NULL && lock->holder->priority < cur->priority) {
+	if(lock->holder != NULL)
+	{
 		cur->waiting_lock = lock;
 		list_push_back (&lock->holder->donations, &cur->donation_elem);
-		thread_update_priority (lock->holder, cur->priority);
+		if(lock->holder->priority < cur->priority)
+		{
+			thread_update_priority (lock->holder, cur->priority);
+		}
+		struct lock *next_lock = lock->holder->waiting_lock;
+		while(next_lock!=NULL)
+		{
+			struct thread *next_holder_thread = next_lock->holder;
+
+			if (next_holder_thread->priority < cur->priority)
+			{
+				thread_update_priority (next_holder_thread, cur->priority);
+			}
+			next_lock=next_holder_thread->waiting_lock;
+		}
 	}
 
 	sema_down (&lock->semaphore);
