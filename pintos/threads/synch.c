@@ -81,11 +81,11 @@ sema_down (struct semaphore *sema) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	while (sema->value == 0) {
+	while (sema->value == 0) { 
 	list_insert_ordered (&sema->waiters,&thread_current ()->elem,thread_priority_more,NULL);
-		thread_block ();
+		thread_block (); // 여기서 멈춤
 	}
-	sema->value--;
+	sema->value--; // 나중에 깨어났을 때 실행
 	intr_set_level (old_level);
 }
 
@@ -216,8 +216,13 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+    if (lock->holder != NULL && lock->holder->priority < thread_current()->priority) {
+        lock->holder->priority = thread_current()->priority;
+    }
+
+    /* acquire1에서는 lock->holder는 끝까지 main */
+	sema_down (&lock->semaphore); // acquire1이 여기서 block. 아래로 못 내려감.
+	lock->holder = thread_current (); // 이 줄은 acquire1이 절대 실행 못 함.
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -250,8 +255,10 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	lock->holder = NULL;
-	sema_up (&lock->semaphore);
+    thread_current()->priority = thread_current()->original_priority; // ← 1. 먼저 복원
+
+	lock->holder = NULL; // ← 2. 그 다음 NULL
+	sema_up (&lock->semaphore); // ← 3. 마지막 깨우기
 }
 
 /* Returns true if the current thread holds LOCK, false
