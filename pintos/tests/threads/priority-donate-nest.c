@@ -28,7 +28,7 @@ void
 test_priority_donate_nest (void) 
 {
   struct lock a, b;
-  struct locks locks; // thread_create 인자로
+  struct locks locks;
 
   /* This test does not work with the MLFQS. */
   ASSERT (!thread_mlfqs);
@@ -72,10 +72,10 @@ medium_thread_func (void *locks_)
        PRI_DEFAULT + 2, thread_get_priority ());
   msg ("Medium thread got the lock.");
 
-  lock_release (locks->a); // a 
+  lock_release (locks->a);
   thread_yield ();
 
-  lock_release (locks->b); //
+  lock_release (locks->b);
   thread_yield ();
 
   msg ("High thread should have just finished.");
