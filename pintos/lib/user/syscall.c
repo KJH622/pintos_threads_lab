@@ -76,7 +76,8 @@ halt (void) {
 
 void
 exit (int status) {
-	syscall1 (SYS_EXIT, status);
+	syscall1 (SYS_EXIT, status);//syscall을 실행하면 CPU가 미리 설정된 kernel entry address로 점프해.
+	//그 “미리 설정된 주소”는 어디서 정하냐?Pintos 부팅 중에 syscall_init()에서 설정해.
 	NOT_REACHED ();
 }
 

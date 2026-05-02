@@ -15,6 +15,7 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "devices/timer.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
@@ -40,18 +41,22 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy,*name_copy,*save_ptr;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
-	fn_copy = palloc_get_page (0);
-	if (fn_copy == NULL)
+	
+	fn_copy = palloc_get_page (0); //output/내가 알게된 개념 핵심.md:100
+	name_copy = malloc(strlen(file_name) + 1);
+	if (fn_copy == NULL || name_copy== NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	strlcpy (name_copy, file_name, strlen(file_name) + 1);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (strtok_r (name_copy, " ", &save_ptr), PRI_DEFAULT, initd, fn_copy);
+	free (name_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -168,13 +173,13 @@ process_exec (void *f_name) {
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
-	struct intr_frame _if;
+	struct intr_frame _if; //output/내가 알게된 개념 핵심.md:114
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
 	/* We first kill the current context */
-	process_cleanup ();
+	process_cleanup ();//“현재 thread가 이미 user process 주소 공간을 가지고 있다면, 그 주소 공간 전체를 버리고 새 프로그램용 주소 공간으로 갈아탄다”
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
@@ -204,6 +209,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	timer_sleep (100);
+	
 	return -1;
 }
 
@@ -329,16 +336,27 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+	char *argument_vector[64];
+	int argument_count = 0;
+	char *token, *save_ptr;
+
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
+		argument_vector[argument_count] = token;
+		argument_count++;
+	}
+
 	/* Allocate and activate page directory. */
-	t->pml4 = pml4_create ();
+	t->pml4 = pml4_create ();//“이 user process만의 가상 주소 공간을 새로 만든다”,이건 user program의 코드/데이터/스택이 어디에 매핑되어 있는지 기록하는 주소 변환 표야.
 	if (t->pml4 == NULL)
 		goto done;
-	process_activate (thread_current ());
+	process_activate (thread_current ());//지금부터 주소 변환할 때 thread_current()->pml4를 봐라
 
+	if (argument_count == 0)goto done;
+	
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (argument_vector[0]);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", argument_vector[0]);
 		goto done;
 	}
 
@@ -350,9 +368,9 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", argument_vector[0]);
 		goto done;
-	}
+	}//열어 둔 실행 파일이 “정상적인 64-bit ELF 실행 파일인지” 검사하는 부분
 
 	/* Read program headers. */
 	file_ofs = ehdr.e_phoff;
@@ -405,17 +423,47 @@ load (const char *file_name, struct intr_frame *if_) {
 					goto done;
 				break;
 		}
-	}
+	}//user program이 실행되는 데 필요한 코드와 데이터 전체를 메모리에 미리 올려두는 것
 
 	/* Set up stack. */
-	if (!setup_stack (if_))
+	if (!setup_stack (if_))//user program이 사용할 빈 stack 공간생성
 		goto done;
 
 	/* Start address. */
-	if_->rip = ehdr.e_entry;
+	if_->rip = ehdr.e_entry;//유저 프로그램이 실행되었을때 시작할 함수 주소 설정
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	void *arg_addr[64];
+	 
+	for(int i=argument_count - 1;i>=0;i--)
+	{
+		size_t lenargv=strlen(argument_vector[i]) + 1;
+		if_->rsp-=lenargv;
+		memcpy((void *) if_->rsp, argument_vector[i], lenargv);
+		arg_addr[i] = (void *) if_->rsp;
+	}
+	
+	while (if_->rsp % 8 != 0)
+	{
+		if_->rsp--;
+	}
+	if_->rsp -= sizeof(char *);
+	*(char **) if_->rsp = NULL;
+
+	for (int i = argument_count - 1; i >= 0; i--)
+	{
+		if_->rsp -= sizeof(char *);
+		*(char **) if_->rsp = arg_addr[i];
+	}// 유저 프로그램은 시작할때 인자를 주소값으로 읽기 때문에 단순 문자열이 저장된 영역이랑 연결해줘야한다.
+
+	void *argv_start = (void *) if_->rsp;//여기서 시작주소를 저장해야 if_->rsp를 건드렸을때 값이 안 바뀐다.
+
+	if_->rsp -= sizeof(void *); //output/내가 알게된 개념 핵심.md:128
+	*(void **) if_->rsp = 0; 
+    
+	if_->R.rdi = argument_count;
+	if_->R.rsi = argv_start;
 
 	success = true;
 
