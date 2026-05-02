@@ -1,0 +1,9 @@
+{
+  "userprog": {
+    "tests/userprog/args-none": {
+      "count": 3,
+      "last_used": 1777685016.35,
+      "last_action": "debug"
+    }
+  }
+}
