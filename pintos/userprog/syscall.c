@@ -42,5 +42,13 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
 	printf ("system call!\n");
-	thread_exit ();
+
+	if(*(char **)f -> R.rax == SYS_WRITE){
+		if(*(char **)f -> R.rdi == 1){
+			printf(*(char **)f -> R.rsi);
+		}
+	}
+
+
+	// thread_exit ();
 }
