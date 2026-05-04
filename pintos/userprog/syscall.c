@@ -129,6 +129,8 @@ syscall_handler (struct intr_frame *f) {
 
 static void
 syscall_exit (int status) {
+	struct thread *curr = thread_current ();
+	if (curr->child_info != NULL) curr->child_info->exit_status = status;
 	printf ("%s: exit(%d)\n", thread_current ()->name, status);
 	thread_exit ();
 }
