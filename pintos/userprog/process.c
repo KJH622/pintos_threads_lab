@@ -316,10 +316,43 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
 		bool writable);
 
-/* Loads an ELF executable from FILE_NAME into the current thread.
- * Stores the executable's entry point into *RIP
- * and its initial stack pointer into *RSP.
- * Returns true if successful, false otherwise. */
+static void
+argument_stack(char **argv, int argc, struct intr_frame *if_) {
+    // ① 문자열들을 스택에 push
+    //   힌트: argc-1부터 0까지 역순으로 반복
+    for (int i = argc-1; i >= 0; i--) {
+        if_->rsp -= strlen(argv[i]) + 1; // rsp 내리기
+        memcpy(if_->rsp, argv[i], strlen(argv[i])+1); // 문자열 복사
+        argv[i] = (char *) if_->rsp; // 중요! 나중에 ④단계에서 이 주소가 필요해    
+    }
+
+    // ②단계 8바이트 정렬 패딩
+    uint8_t padding = if_->rsp % 8; // 패딩 크기
+    if_->rsp -= padding; // rsp 내리기
+    memset(if_->rsp, 0, padding); // 0으로 채우기
+
+    // ③단계 NULL 포인터 push
+    if_->rsp -= 8; // NULL도 8바이트니까
+    *(uint64_t *) if_->rsp = 0; // pintos/include/lib/stddef.h에 정의되어 있음
+
+    // ④단계 argv 포인터 배열 push (역순)
+    for (int i = argc-1; i >= 0; i--) {
+        if_->rsp -= 8;
+        *(uint64_t *) if_->rsp = (uint64_t) argv[i];
+    }
+
+    // ⑤단계 fake return address
+    if_->rsp -= 8;
+    *(uint64_t *) if_->rsp = 0;
+
+    // rdi = argc, rsi = argv 배열 시작 주소
+    if_->R.rdi = argc; // if_->R.rdi => 인자 개수
+    if_->R.rsi = if_->rsp + 8; // if_->R.rsi => argv 배열 시작 주소 (fake return 위)
+}
+
+/* ELF 실행 파일을 FILE_NAME에서 현재 스레드로 로드한다.
+* 실행 파일의 진입점(entry point)을 *RIP에 저장하고, 초기 스택 포인터를 *RSP에 저장한다.
+* 성공하면 true, 실패하면 false를 반환한다. */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
@@ -328,6 +361,11 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+    char *file_name_copy = palloc_get_page(0); // 복사할 배열 선언
+    char *argv[32];
+    int argc = 0;
+    char *token;
+    char *save_ptr;
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -335,13 +373,25 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+    if (file_name_copy == NULL) {
+        goto done;
+    }
+
+    strlcpy(file_name_copy, file_name, PGSIZE); // 복사 (PGSIZE == Page Size = 4KB)
+
+    for (token = strtok_r(file_name_copy, " ", &save_ptr);
+        token != NULL;
+        token = strtok_r(NULL, " ", &save_ptr)) {
+            argv[argc++] = token; // 먼저 쓴 후 올림.
+    }
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (argv[0]); // argv[0] : 파일명
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", file_name_copy);
 		goto done;
 	}
-
+    
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
@@ -416,11 +466,15 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+     argument_stack(argv, argc, if_);
 
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
+    if (file_name_copy != NULL) {
+        palloc_free_page(file_name_copy);
+    }
 	file_close (file);
 	return success;
 }
@@ -508,7 +562,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* Get a page of memory. */
-		uint8_t *kpage = palloc_get_page (PAL_USER);
+		uint8_t *kpage = palloc_get_page (PAL_USER); // 편의성과 핀토스는 page 단위로
 		if (kpage == NULL)
 			return false;
 
