@@ -31,6 +31,10 @@ static void __do_fork (void *);
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+    for (int i = 0; i < FD_MAX; i++) {
+        current->fd_table[i] = NULL;
+    }
+    current->fd_next = 3;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
