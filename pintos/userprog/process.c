@@ -440,8 +440,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	{
 		size_t lenargv=strlen(argument_vector[i]) + 1;
 		if_->rsp-=lenargv;
-		memcpy((void *) if_->rsp, argument_vector[i], lenargv);
-		arg_addr[i] = (void *) if_->rsp;
+		memcpy((char *) if_->rsp, argument_vector[i], lenargv);
+		arg_addr[i] = (char *) if_->rsp;
 	}
 	
 	while (if_->rsp % 8 != 0)
@@ -457,10 +457,10 @@ load (const char *file_name, struct intr_frame *if_) {
 		*(char **) if_->rsp = arg_addr[i];
 	}// 유저 프로그램은 시작할때 인자를 주소값으로 읽기 때문에 단순 문자열이 저장된 영역이랑 연결해줘야한다.
 
-	void *argv_start = (void *) if_->rsp;//여기서 시작주소를 저장해야 if_->rsp를 건드렸을때 값이 안 바뀐다.
+	void *argv_start = (char *) if_->rsp;//여기서 시작주소를 저장해야 if_->rsp를 건드렸을때 값이 안 바뀐다.
 
-	if_->rsp -= sizeof(void *); //output/내가 알게된 개념 핵심.md:128
-	*(void **) if_->rsp = 0; 
+	if_->rsp -= sizeof(char *); //output/내가 알게된 개념 핵심.md:128
+	*(char **) if_->rsp = 0; 
     
 	if_->R.rdi = argument_count;
 	if_->R.rsi = argv_start;
