@@ -41,20 +41,28 @@ process_init (void) {
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
+	char *name_copy;
+	char *save_ptr;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
+	// 단일 페이지를 얻어서 반환 
 	fn_copy = palloc_get_page (0);
+	name_copy = palloc_get_page(0);
+
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	strlcpy (name_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (strtok_r(name_copy, " ", &save_ptr), PRI_DEFAULT, initd, fn_copy);
+	palloc_free_page(name_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
+	
 }
 
 /* A thread function that launches first user process. */
@@ -168,7 +176,9 @@ process_exec (void *f_name) {
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
-	struct intr_frame _if;
+	
+	 // 인터럽트(or System call) 발생 순간의 CPU 상태 스냅샷
+	 struct intr_frame _if;
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
@@ -204,7 +214,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	return -1;
+	timer_sleep(100);
+	 return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -335,10 +346,39 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	// seperate argv
+	if(file_name == NULL) goto done;
+	char *fn_copy_parse;
+
+	// 원본 보호를 위한 복사본 생성
+	fn_copy_parse = palloc_get_page (0);
+	if(fn_copy_parse == NULL) {
+		goto done;
+	}
+	strlcpy(fn_copy_parse, file_name, PGSIZE);
+
+	char *save_pt; //
+	char **argv[64] = {0}; // 앞서 pintos 기준이 4kb로 읽고, 넉넉하게 포인터배열 64개(512byte) + 나머지 문자열 크기
+	int argc = 0;
+
+	// 첫번째 토큰이 없다면
+	char *ftken;
+
+	// 
+	for(ftken = strtok_r(fn_copy_parse, " ", &save_pt);
+		ftken != NULL;
+		ftken = strtok_r(NULL, " ", &save_pt)) {
+			if(argc > 62) goto done;
+			argv[argc] = ftken;
+			argc++;
+		}
+	if(argv[0] == NULL) goto done;
+
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (argv[0]);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", argv[0]);
 		goto done;
 	}
 
@@ -350,7 +390,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", argv[0]);
 		goto done;
 	}
 
@@ -413,18 +453,53 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
+	
+	char *user_argv[64] = {0};
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	int stk_argc = argc;
+	while(stk_argc > 0) {
+		size_t size = (strlen(argv[stk_argc-1])+1);
+		if_->rsp -= size;
+
+		memcpy((char *)if_->rsp, argv[stk_argc-1], size);
+		user_argv[stk_argc-1] = (char *)if_->rsp;
+		stk_argc--;
+	}
+
+	// alignment
+	while(if_->rsp % 8 != 0) {
+		if_->rsp--;
+	}
+	// if (((unsigned long long) if_->rsp & 7) != 0) {
+	// 	size_t padding = (size_t) if_-> rsp % 8;
+	// 	if_->rsp -= padding;
+	// 	memset(*(char **) if_->rsp, 0, padding);
+	// }
+	if_->rsp -= 8;
+	*(char **)if_->rsp = NULL;
+
+	// push stack (address)
+	for(int i=argc-1; i>=0; i--) {
+		if_->rsp -= sizeof(char*); // 8byte
+		*(char **)(if_->rsp) = user_argv[i];
+		// if_->rsp(유저스택주소)를 1byte char 형 포인터로 형변환
+		// char 포인터가 가리키는 메모리에 프로그램 인자 주소값 삽입
+	}
+	// push fake address
+	if_->rsp -= 8;
+	*(char **)if_->rsp = 0;
+	
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp + 8;
 
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
+	if(fn_copy_parse != NULL) palloc_free_page(fn_copy_parse); // argv에는 fn_copy_parse의 주소값이 들어가기에 스택에 올리고 나서 해제해야함
 	return success;
 }
-
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
@@ -537,14 +612,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the USER_STACK */
 static bool
 setup_stack (struct intr_frame *if_) {
+	// 8비트 정수
 	uint8_t *kpage;
 	bool success = false;
 
+	// 페이지 할당
 	kpage = palloc_get_page (PAL_USER | PAL_ZERO);
 	if (kpage != NULL) {
+		
+		// 커널에서 가져온(kpage) 수정할 수 있는(true) 페이지를 첫번째 인자에 매핑
 		success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
 		if (success)
+			// 인터럽트 프레임(if)에서 rsp(스택 포인터)를 USER_STACK으로 변경
 			if_->rsp = USER_STACK;
+			//// 프로그램 시작 시 사용할 스택의 시작위치 저장
 		else
 			palloc_free_page (kpage);
 	}
