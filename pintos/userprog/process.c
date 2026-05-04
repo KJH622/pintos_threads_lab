@@ -209,8 +209,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	// while("dkdkdkdkdkdkdk");
 	timer_sleep (100);
-	
 	return -1;
 }
 
@@ -392,6 +392,14 @@ load (const char *file_name, struct intr_frame *if_) {
             argv[argc++] = token; // 먼저 쓴 후 올림.
     }
 
+
+	char *sp = NULL;
+	char *full_file_name = palloc_get_page(0);
+	strlcpy (full_file_name, file_name, strlen(file_name) + 1);
+
+
+	file_name = strtok_r (file_name, " ", &sp);
+
 	/* Open executable file. */
 	file = filesys_open (argv[0]); // argv[0] : 파일명
 	if (file == NULL) {
@@ -474,6 +482,37 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
      argument_stack(argv, argc, if_);
+
+	char *arg_addrs[64];
+	int argc = 0;
+	for (char* token = strtok_r (full_file_name, " ", &sp);
+		token != NULL;
+		token = strtok_r (NULL, " ", &sp)) {
+
+		if_->rsp -= strlen(token) + 1;
+		memcpy((void *)if_->rsp, token, strlen(token) + 1);
+		arg_addrs[argc] = (void *)if_->rsp;
+		argc ++;
+	}
+
+	palloc_free_page(full_file_name);
+	if_->rsp = if_->rsp & ~0x7;
+	if_->rsp -= 8;
+	*(char **) if_->rsp = NULL;
+
+	
+	for(int j = argc; j > 0; j--){
+
+		if_->rsp -= 8;
+		*(char **)if_->rsp = arg_addrs[j-1];
+
+	}
+
+	if_ -> R.rdi = argc;
+	if_ -> R.rsi = if_->rsp;//argv 배열 시작 주소
+
+	if_->rsp -= 8;
+	*(void **) if_->rsp = 0;
 
 	success = true;
 

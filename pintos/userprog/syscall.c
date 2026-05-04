@@ -39,6 +39,7 @@ syscall_init (void) {
 }
 
 /* The main system call interface */
+
 void
 syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
@@ -59,5 +60,4 @@ syscall_handler (struct intr_frame *f) {
 			f->R.rax = size;
 		}
 	}
-	
 }
