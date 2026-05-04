@@ -323,7 +323,7 @@ argument_stack(char **argv, int argc, struct intr_frame *if_) {
     for (int i = argc-1; i >= 0; i--) {
         if_->rsp -= strlen(argv[i]) + 1; // rsp 내리기
         memcpy(if_->rsp, argv[i], strlen(argv[i])+1); // 문자열 복사
-        argv[i] = (char *) if_->rsp; // 중요! 나중에 ④단계에서 이 주소가 필요해    
+        argv[i] = (char *) if_->rsp; // 중요! 나중에 ④단계에서 이 주소가 필요해
     }
 
     // ②단계 8바이트 정렬 패딩
@@ -338,7 +338,7 @@ argument_stack(char **argv, int argc, struct intr_frame *if_) {
     // ④단계 argv 포인터 배열 push (역순)
     for (int i = argc-1; i >= 0; i--) {
         if_->rsp -= 8;
-        *(uint64_t *) if_->rsp = (uint64_t) argv[i];
+        *(char **) if_->rsp = argv[i];
     }
 
     // ⑤단계 fake return address
@@ -388,7 +388,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Open executable file. */
 	file = filesys_open (argv[0]); // argv[0] : 파일명
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name_copy);
+		printf ("load: %s: open failed\n", argv[0]);
 		goto done;
 	}
     
@@ -400,7 +400,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", argv[0]);
 		goto done;
 	}
 
