@@ -243,9 +243,8 @@ strtok_r (char *s, const char *delimiters, char **save_ptr) {
 
 	/* Skip any non-DELIMITERS up to the end of the string. */
 	token = s;
-	while (strchr (delimiters, *s) == NULL){
+	while (strchr (delimiters, *s) == NULL)
 		s++;
-	}
 	if (*s != '\0') {
 		*s = '\0';
 		*save_ptr = s + 1;

@@ -7,7 +7,6 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
-#include <console.h>
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -29,7 +28,7 @@ void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
 			((uint64_t)SEL_KCSEG) << 32);
-	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);//CPU야, user mode에서 syscall 명령이 실행되면이 주소(syscall_entry)로 점프해라
+	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
 
 	/* The interrupt service rountine should not serve any interrupts
 	 * until the syscall_entry swaps the userland stack to the kernel
@@ -39,25 +38,9 @@ syscall_init (void) {
 }
 
 /* The main system call interface */
-
 void
-syscall_handler (struct intr_frame *f) {
+syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	if(f->R.rax==SYS_EXIT)
-	{
-		int status = f->R.rdi;
-		printf("%s: exit(%d)\n", thread_current()->name, status);
-		thread_exit();
-	}
-	else if (f->R.rax==SYS_WRITE)
-	{
-		int fd = f->R.rdi;
-		const void *buffer = (const void *) f->R.rsi;
-		unsigned size = f->R.rdx;
-
-		if (fd == 1) {
-			putbuf(buffer, size);
-			f->R.rax = size;
-		}
-	}
+	printf ("system call!\n");
+	thread_exit ();
 }
