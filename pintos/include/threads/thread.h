@@ -92,6 +92,7 @@ struct child_info {
 	int exit_status;
 	bool exited;
 	bool waited;
+	struct thread *parent;
 	struct list_elem elem;
 };
 #endif
