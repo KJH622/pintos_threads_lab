@@ -81,6 +81,8 @@ process_create_initd (const char *file_name) {
 	child->exit_status = -1;
 	child->exited = false;
 	child->waited = false;
+	child->load_success = false;
+	sema_init (&child->load_sema, 0);
 	child->parent = thread_current ();
 
 	/* Create a new thread to execute FILE_NAME. */
@@ -92,8 +94,13 @@ process_create_initd (const char *file_name) {
 		free (child);
 		return TID_ERROR;
 	}
+	
 	list_push_back (&thread_current ()->children, &child->elem);
 	palloc_free_page(name_copy);
+	sema_down (&child->load_sema);
+	free (info);
+	if (!child->load_success) return TID_ERROR;
+	
 	return child->tid;
 	
 }
@@ -108,9 +115,8 @@ initd (void *initd_info) {
 	char *file_name = info->file_name;
 	thread_current ()->child_info = info->child_info;
 	process_init ();
-	free (info);
-	if (process_exec (file_name) < 0)
-		PANIC("Fail to launch initd\n");
+	
+	if (process_exec (file_name) < 0) thread_exit ();
 	NOT_REACHED ();
 }
 
@@ -224,6 +230,11 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
+	if (thread_current ()->child_info != NULL) {
+		thread_current ()->child_info->load_success = success;
+		sema_up (&thread_current ()->child_info->load_sema);
+	}
+
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -261,7 +272,7 @@ process_wait (tid_t child_tid) {
 	
 	if (child == NULL) return -1;
 	if (child->waited) return -1;
-	
+
 	child->waited = true;
 
 	while (!child->exited){

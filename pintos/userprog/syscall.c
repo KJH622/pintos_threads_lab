@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -8,7 +9,8 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
-#include "devices/shutdown.h"
+#include "threads/palloc.h"
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -136,8 +138,18 @@ syscall_exit (int status) {
 }
 
 static tid_t
-syscall_exec (const char *file UNUSED) {
-	return -1;
+syscall_exec (const char *file) {
+	char *fn_copy = palloc_get_page (0);
+
+	if (fn_copy == NULL)
+		return -1;
+
+	strlcpy (fn_copy, file, PGSIZE);
+
+	if (process_exec (fn_copy) < 0)
+		return -1;
+
+	NOT_REACHED ();
 }
 
 static int
