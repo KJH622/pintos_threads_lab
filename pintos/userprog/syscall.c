@@ -38,17 +38,25 @@ syscall_init (void) {
 }
 
 /* The main system call interface */
-void
-syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
 
-	if(*(char **)f -> R.rax == SYS_WRITE){
-		if(*(char **)f -> R.rdi == 1){
-			printf(*(char **)f -> R.rsi);
+void
+syscall_handler (struct intr_frame *f) {
+	// TODO: Your implementation goes here.
+	if(f->R.rax==SYS_EXIT)
+	{
+		int status = f->R.rdi;
+		printf("%s: exit(%d)\n", thread_current()->name, status);
+		thread_exit();
+	}
+	else if (f->R.rax==SYS_WRITE)
+	{
+		int fd = f->R.rdi;
+		const void *buffer = (const void *) f->R.rsi;
+		unsigned size = f->R.rdx;
+
+		if (fd == 1) {
+			putbuf(buffer, size);
+			f->R.rax = size;
 		}
 	}
-
-
-	// thread_exit ();
 }
