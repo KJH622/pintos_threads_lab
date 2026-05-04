@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -85,6 +86,15 @@ typedef int tid_t;
  * only because they are mutually exclusive: only a thread in the
  * ready state is on the run queue, whereas only a thread in the
  * blocked state is on a semaphore wait list. */
+#ifdef USERPROG
+struct child_info {
+	tid_t tid;
+	int exit_status;
+	bool exited;
+	bool waited;
+	struct list_elem elem;
+};
+#endif
 struct lock;
 struct thread {
 	/* Owned by thread.c. */
@@ -100,9 +110,14 @@ struct thread {
 	struct list donations;         /* 나에게 donation한 thread 목록. */
 	struct list_elem donation_elem;
 
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+
+	struct list children;
+	struct semaphore child_wait_sema;
+	struct child_info *child_info;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
