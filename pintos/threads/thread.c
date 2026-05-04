@@ -453,6 +453,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init (&t->children);
 	sema_init (&t->child_wait_sema, 0);
 	t->child_info = NULL;
+	list_init (&t->fd_table);
+	cnf_fd = 2;
 #endif
 }
 

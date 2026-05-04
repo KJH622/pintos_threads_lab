@@ -19,6 +19,7 @@ static int syscall_wait (tid_t pid);
 static bool syscall_create (const char *file, unsigned initial_size);
 static bool syscall_remove (const char *file);
 static int syscall_open (const char *file);
+static struct file* fd_get_file(int fd);
 static int syscall_filesize (int fd);
 static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, const void *buffer, unsigned size);
@@ -153,10 +154,34 @@ syscall_remove (const char *file UNUSED) {
 	return false;
 }
 
+// 현 기능 작동을 위한 Stub Code
+static struct file*
+fd_get_file(int fd) {
+
+	struct thread *cur_thd = thread_current();
+	struct list *fdtbl = &cur_thd->fd_table;
+
+	if(fd >= 2) {
+		for(struct list_elem *e = list_begin(fdtbl); e != list_end(fdtbl); e = list_next(e)) {
+			struct fd_entry *return_fd = list_entry(e, struct fd_entry, elem);
+
+			if(return_fd->fd == fd) {
+				return return_fd->file;
+			} 
+		}
+	}
+	return NULL;
+}
+
 static int
-syscall_open (const char *file UNUSED) {
+syscall_open (const char *file) {
+	
+	
+		
 	return -1;
 }
+
+
 
 static int
 syscall_filesize (int fd UNUSED) {
@@ -164,12 +189,32 @@ syscall_filesize (int fd UNUSED) {
 }
 
 static int
-syscall_read (int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED) {
+syscall_read (int fd , void *buffer , unsigned size ) {
+
+	/*
+		fd 값에 읽기 기능 분기
+		fd = 0 , 키보드 입력
+		fd = 1 , X(출력 전용 fd값)
+		fd = 2 , 열린 파일 읽기	
+
+		if fail, return -1
+	*/
+	
 	return -1;
 }
 
 static int
 syscall_write (int fd, const void *buffer, unsigned size) {
+	
+	/*
+		fd 값에 쓰기 기능 분기
+		fd = 0 , X(입력 전용 fd값)
+		fd = 1 , 콘솔 출력 
+		fd = 2 , 열린 파일 쓰기
+		
+		if fail, return -1
+	*/
+
 	if (fd == 1) {
 		putbuf (buffer, size);
 		return size;
@@ -178,11 +223,28 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 }
 
 static void
-syscall_seek (int fd UNUSED, unsigned position UNUSED) {
+syscall_seek (int fd , unsigned position ) {
+
+	/*
+		Open(fd) 성공하여 struct 반환 시에만 가능
+		fd = 2 , 현재 fd 파일 position 위치로 이동
+
+		if fail, return
+	*/
+
 }
 
 static unsigned
-syscall_tell (int fd UNUSED) {
+syscall_tell (int fd ) {
+
+	/*
+		Open(fd) 성공하여 struct 반환 시에만 가능
+		fd = 2 , 현재 fd 파일 위치 반환
+		
+		if fail, return -1
+	*/
+
+
 	return 0;
 }
 

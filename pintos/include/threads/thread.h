@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 #include "threads/synch.h"
+#include "filesys/file.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -97,6 +98,12 @@ struct child_info {
 };
 #endif
 struct lock;
+
+struct fd_entry {
+		int fd;
+		struct file *file;
+		struct list_elem elem;
+};
 struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
@@ -111,6 +118,19 @@ struct thread {
 	struct list donations;         /* 나에게 donation한 thread 목록. */
 	struct list_elem donation_elem;
 
+	// add for syscall
+	/*
+		fd = 0		stdin
+		fd = 1		stdout
+		fd >= 2		open normal files
+
+		fd_table : 파일을 연결해서 관리하는 리스트
+		cnt_fd : fd 번호 누적. 한번 close 한 번호 재사용 불가
+		fd_entry : 파일 개수
+	*/
+
+	
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -119,6 +139,9 @@ struct thread {
 	struct list children;
 	struct semaphore child_wait_sema;
 	struct child_info *child_info;
+
+	struct list fd_table;
+	int cnt_fd;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

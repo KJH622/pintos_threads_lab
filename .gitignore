@@ -14,6 +14,7 @@
 *.dis
 *.dump
 
+
 # 빌드 디렉터리
 **/build/
 **/bin/
@@ -30,3 +31,6 @@ core
 .DS_Store
 
 **/.test_status
+
+# 공통 에이전트 파일
+*.md
