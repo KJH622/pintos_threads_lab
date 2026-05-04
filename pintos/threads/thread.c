@@ -448,6 +448,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->base_priority = priority;
 	t->waiting_lock = NULL;
 	list_init (&t->donations);
+
+#ifdef USERPROG
+	list_init (&t->children);
+	sema_init (&t->child_wait_sema, 0);
+	t->child_info = NULL;
+#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
