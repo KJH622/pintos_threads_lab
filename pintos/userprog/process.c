@@ -85,15 +85,15 @@ process_create_initd (const char *file_name) {
 
 	/* Create a new thread to execute FILE_NAME. */
 	child->tid = thread_create (strtok_r(name_copy, " ", &save_ptr), PRI_DEFAULT, initd, info);
-	palloc_free_page(name_copy);
 	if (child->tid == TID_ERROR){
 		palloc_free_page (fn_copy);
+		palloc_free_page (name_copy);
 		free (info);
 		free (child);
 		return TID_ERROR;
 	}
-		
 	list_push_back (&thread_current ()->children, &child->elem);
+	palloc_free_page(name_copy);
 	return child->tid;
 	
 }
@@ -245,12 +245,33 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
-	timer_sleep(100);
-	 return -1;
+process_wait (tid_t child_tid) {
+	struct thread *curr=thread_current();
+	struct list_elem *e;
+	struct child_info *child = NULL;
+	int status;
+
+	for (e = list_begin (&curr->children);e != list_end (&curr->children);e = list_next (e)){
+		struct child_info *ctid = list_entry (e, struct child_info, elem);
+		if (ctid->tid == child_tid) {
+			child = ctid;
+			break;
+		}
+	}
+	
+	if (child == NULL) return -1;
+	if (child->waited) return -1;
+	
+	child->waited = true;
+
+	while (!child->exited){
+		sema_down (&curr->child_wait_sema);
+	}
+
+	status = child->exit_status;
+	list_remove (&child->elem);
+	free (child);
+	return status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
