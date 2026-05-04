@@ -7,9 +7,28 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "userprog/process.h"
+#include "devices/shutdown.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+static void syscall_exit (int status);
+static tid_t syscall_exec (const char *file);
+static int syscall_wait (tid_t pid);
+
+static bool syscall_create (const char *file, unsigned initial_size);
+static bool syscall_remove (const char *file);
+static int syscall_open (const char *file);
+static int syscall_filesize (int fd);
+static int syscall_read (int fd, void *buffer, unsigned size);
+static int syscall_write (int fd, const void *buffer, unsigned size);
+static void syscall_seek (int fd, unsigned position);
+static unsigned syscall_tell (int fd);
+static void syscall_close (int fd);
+
+static tid_t syscall_fork (const char *thread_name, struct intr_frame *f);
+static void syscall_halt (void);
+static void syscall_invalid (void);
 
 /* System call.
  *
@@ -40,22 +59,148 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
-	// TODO: Your implementation goes here.
-	if(f->R.rax==SYS_EXIT)
-	{
-		int status = f->R.rdi;
-		printf("%s: exit(%d)\n", thread_current()->name, status);
-		thread_exit();
-	}
-	else if (f->R.rax==SYS_WRITE)
-	{
-		int fd = f->R.rdi;
-		const void *buffer = (const void *) f->R.rsi;
-		unsigned size = f->R.rdx;
+	switch (f->R.rax) {
+		case SYS_HALT:
+			syscall_halt ();
+			break;
 
-		if (fd == 1) {
-			putbuf(buffer, size);
-			f->R.rax = size;
-		}
+		case SYS_EXIT:
+			syscall_exit ((int) f->R.rdi);
+			break;
+
+		case SYS_FORK:
+			f->R.rax = syscall_fork ((const char *) f->R.rdi, f);
+			break;
+
+		case SYS_EXEC:
+			f->R.rax = syscall_exec ((const char *) f->R.rdi);
+			break;
+
+		case SYS_WAIT:
+			f->R.rax = syscall_wait ((tid_t) f->R.rdi);
+			break;
+
+		case SYS_CREATE:
+			f->R.rax = syscall_create ((const char *) f->R.rdi,
+									   (unsigned) f->R.rsi);
+			break;
+
+		case SYS_REMOVE:
+			f->R.rax = syscall_remove ((const char *) f->R.rdi);
+			break;
+
+		case SYS_OPEN:
+			f->R.rax = syscall_open ((const char *) f->R.rdi);
+			break;
+
+		case SYS_FILESIZE:
+			f->R.rax = syscall_filesize ((int) f->R.rdi);
+			break;
+
+		case SYS_READ:
+			f->R.rax = syscall_read ((int) f->R.rdi,
+									 (void *) f->R.rsi,
+									 (unsigned) f->R.rdx);
+			break;
+
+		case SYS_WRITE:
+			f->R.rax = syscall_write ((int) f->R.rdi,
+									  (const void *) f->R.rsi,
+									  (unsigned) f->R.rdx);
+			break;
+
+		case SYS_SEEK:
+			syscall_seek ((int) f->R.rdi, (unsigned) f->R.rsi);
+			break;
+
+		case SYS_TELL:
+			f->R.rax = syscall_tell ((int) f->R.rdi);
+			break;
+
+		case SYS_CLOSE:
+			syscall_close ((int) f->R.rdi);
+			break;
+
+		default:
+			syscall_invalid ();
+			break;
 	}
+}
+
+static void
+syscall_exit (int status) {
+	printf ("%s: exit(%d)\n", thread_current ()->name, status);
+	thread_exit ();
+}
+
+static tid_t
+syscall_exec (const char *file UNUSED) {
+	return -1;
+}
+
+static int
+syscall_wait (tid_t pid) {
+	return process_wait (pid);
+}
+
+static bool
+syscall_create (const char *file UNUSED, unsigned initial_size UNUSED) {
+	return false;
+}
+
+static bool
+syscall_remove (const char *file UNUSED) {
+	return false;
+}
+
+static int
+syscall_open (const char *file UNUSED) {
+	return -1;
+}
+
+static int
+syscall_filesize (int fd UNUSED) {
+	return -1;
+}
+
+static int
+syscall_read (int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED) {
+	return -1;
+}
+
+static int
+syscall_write (int fd, const void *buffer, unsigned size) {
+	if (fd == 1) {
+		putbuf (buffer, size);
+		return size;
+	}
+	return -1;
+}
+
+static void
+syscall_seek (int fd UNUSED, unsigned position UNUSED) {
+}
+
+static unsigned
+syscall_tell (int fd UNUSED) {
+	return 0;
+}
+
+static void
+syscall_close (int fd UNUSED) {
+}
+
+static tid_t
+syscall_fork (const char *thread_name UNUSED, struct intr_frame *f UNUSED) {
+	return -1;
+}
+
+static void
+syscall_halt (void) {
+	power_off ();
+}
+
+static void
+syscall_invalid (void) {
+	syscall_exit (-1);
 }
