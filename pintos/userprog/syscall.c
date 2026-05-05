@@ -8,8 +8,10 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
-#include "devices/shutdown.h"
 #include "devices/input.h"
+#include "threads/init.h"
+#include "filesys/file.h"  
+#include "filesys/filesys.h" 
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -128,8 +130,6 @@ syscall_handler (struct intr_frame *f) {
 	}
 }
 
-/* fd_table에서 일반 파일 fd에 대응하는 file 포인터를 반환한다.
-   표준 입출력 fd와 범위를 벗어난 fd, 할당되지 않은 fd는 NULL을 반환한다. */
 static struct file *
 fd_to_file(int fd) {
     if (fd < 2 || fd >= FD_MAX) { /* 각 syscall에서 따로 처리하도록 */
@@ -138,17 +138,27 @@ fd_to_file(int fd) {
     return thread_current()->fd_table[fd];
 }
 
-/* 현재 스레드의 fd_table에서 빈 슬롯을 찾아 file을 등록하고,
-   할당된 fd 번호를 반환한다. 할당할 수 없으면 -1을 반환한다. */
 static int
-fd_alloc(struct file *f) {
-    return -1;
+fd_alloc(struct file *f) { /* f = 등록할 파일 포인터 (filesys_open이 반환한 것) */
+    struct thread *current = thread_current();
+    for (int i = 2; i < FD_MAX; i++) { /* fd 2부터 탐색 (0, 1은 특수 fd) */
+        if (current->fd_table[i] == NULL) { /* 빈 슬롯 발견 */
+            current->fd_table[i] = f; /* 파일 포인터 등록 */
+            return i; /* 할당된 fd 번호 반환 */
+        }
+    }
+    return -1; /* 빈 슬롯 없음 → 실패 */
 }
 
-/* 현재 스레드의 fd_table에서 fd에 해당하는 file 등록을 해제한다.
-   이후 같은 fd 번호는 다시 할당될 수 있다. */
 static void
-fd_free(int fd) {}
+fd_free(int fd) {
+    struct file *f = fd_to_file(fd); /* fd → 파일 포인터 변환 */
+    if (f == NULL) { /* 잘못된 fd → 그냥 종료 */
+        return;
+    }
+    file_close(f); /* 커널 자원 해제 */
+    thread_current()->fd_table[fd] = NULL; /* 슬롯 비우기 */
+}
 
 static void
 syscall_exit (int status) {
@@ -167,62 +177,74 @@ syscall_wait (tid_t pid) {
 }
 
 static bool
-syscall_create (const char *file UNUSED, unsigned initial_size UNUSED) {
-	return false;
+syscall_create (const char *file, unsigned initial_size) {
+    if (file == NULL) { /* NULL 포인터는 잘못된 사용자 접근으로 처리한다. */
+        syscall_exit(-1);
+    }
+    if (!is_user_vaddr(file)) { /* 커널 영역 주소 접근은 허용하지 않는다. */
+        syscall_exit(-1);
+    }
+    return filesys_create (file, initial_size);
 }
 
 static bool
-syscall_remove (const char *file UNUSED) {
-	return false;
+syscall_remove (const char *file) {
+    if (file == NULL) { /* NULL 포인터는 잘못된 사용자 접근으로 처리한다. */
+        syscall_exit(-1);
+    }
+    if (!is_user_vaddr(file)) { /* 커널 영역 주소 접근은 허용하지 않는다. */
+        syscall_exit(-1);
+    }
+    return filesys_remove(file); /* 파일 시스템에서 해당 파일을 삭제하고 결과를 반환한다. */
 }
-
 
 static int
 syscall_open (const char *file) {
-	return -1;
+    if (file == NULL) { /* NULL 포인터는 잘못된 사용자 접근으로 처리한다. */
+        syscall_exit(-1);
+    }
+    if (!is_user_vaddr(file)) { /* 커널 영역 주소 접근은 허용하지 않는다. */
+        syscall_exit(-1);
+    }
+    struct file *f = filesys_open(file); /* 파일 시스템에서 파일을 연다. */
+    if (f == NULL) {
+        return -1;
+    }
+    int fd = fd_alloc(f); /* 열린 파일에 fd 번호를 할당한다. */
+    if (fd == -1) {
+        file_close(f); /* fd 할당 실패 시 열린 파일을 닫아 자원을 해제한다. */
+        return -1;
+    }
+    return fd;
 }
 
-
-
 static int
-syscall_filesize (int fd UNUSED) {
-	return -1;
+syscall_filesize (int fd) {
+    struct file *f = fd_to_file(fd);
+    if (f == NULL) {
+        return -1;
+    }
+    return file_length(f);
 }
 
 static int
 syscall_read (int fd , void *buffer , unsigned size ) {
-
-	/*
-		fd 값에 읽기 기능 분기
-		fd = 0 , 키보드 입력
-		fd = 1 , X(출력 전용 fd값)
-		fd = 2 , 열린 파일 읽기	
-
-		if fail, return -1
-	*/
-	
 	if(fd == 0) {
 		int read_size = 0;
 
 		for(int i = 0; i < size; i++) {
 			((uint8_t *)buffer)[i] = input_getc();
 			read_size++;
-			/* 			****주의****
-				여기서 buffer에는 문자열 종료 기호(\0)가 없으므로,
-				유저 프로그램 쪽에서 사용할때 삽입하여서 사용해야함.
-			*/
 		}
 		return read_size;
 	}
 	else if (fd == 1) {
-		// 표준 출력으로 기능 X
 		return -1;
 	}
 	else if (fd >= 2) {
 		struct file *get_fl = fd_to_file(fd);
 		
 		if(get_fl != NULL) {
-			// open 된 파일 읽기
 			int read_size = file_read(get_fl, buffer, size);
 
 			return read_size;
@@ -233,17 +255,7 @@ syscall_read (int fd , void *buffer , unsigned size ) {
 
 static int
 syscall_write (int fd, const void *buffer, unsigned size) {
-	
-	/*
-		fd 값에 쓰기 기능 분기
-		fd = 0 , X(입력 전용 fd값)
-		fd = 1 , 콘솔 출력 
-		fd = 2 , 열린 파일 쓰기
-		
-		if fail, return -1
-	*/
 	if(fd == 0) {
-		// 표준 입력으로 기능 X
 		return -1;
 	}
 	else if (fd == 1) {
@@ -254,7 +266,6 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 		struct file *get_fl = fd_to_file(fd);
 
 		if(get_fl != NULL) {
-			// open 된 파일에 쓰기
 			return file_write(get_fl, buffer, size);
 		}
 	}
@@ -263,14 +274,6 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 
 static void
 syscall_seek (int fd , unsigned position ) {
-
-	/*
-		Open(fd) 성공하여 struct 반환 시에만 가능
-		fd = 2 , 현재 fd 파일 position 위치로 이동
-
-		if fail, return
-	*/
-
 	if(fd >= 2) {
 		struct file *get_fl = fd_to_file(fd);
 		if(get_fl != NULL) {
@@ -281,13 +284,6 @@ syscall_seek (int fd , unsigned position ) {
 
 static unsigned
 syscall_tell (int fd ) {
-
-	/*
-		Open(fd) 성공하여 struct 반환 시에만 가능
-		fd = 2 , 현재 fd 파일 위치 반환
-		
-		if fail, return -1
-	*/
 	if(fd >= 2) {
 		struct file *get_fl = fd_to_file(fd);
 		if(get_fl != NULL) {
@@ -299,7 +295,8 @@ syscall_tell (int fd ) {
 }
 
 static void
-syscall_close (int fd UNUSED) {
+syscall_close (int fd) {
+    fd_free(fd);
 }
 
 static tid_t
