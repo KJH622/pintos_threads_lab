@@ -8,9 +8,10 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
+#include "devices/input.h"
 #include "threads/init.h"
-#include "filesys/file.h"      // file_close(), file_length() 등
-#include "filesys/filesys.h"   // filesys_create(), filesys_open() 등
+#include "filesys/file.h"  
+#include "filesys/filesys.h" 
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -219,34 +220,78 @@ syscall_open (const char *file) {
 
 static int
 syscall_filesize (int fd) {
-    struct file *f = fd_to_file(fd); /* fd로 열린 파일 포인터를 조회한다. */
-    if (f == NULL) { /* 조회 실패 시 잘못된 fd로 보고 실패를 반환한다. */
+    struct file *f = fd_to_file(fd);
+    if (f == NULL) {
         return -1;
     }
-    return file_length(f); /* 파일 시스템에 저장된 파일 크기를 반환한다. */
+    return file_length(f);
 }
 
 static int
-syscall_read (int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED) {
+syscall_read (int fd , void *buffer , unsigned size ) {
+	if(fd == 0) {
+		int read_size = 0;
+
+		for(int i = 0; i < size; i++) {
+			((uint8_t *)buffer)[i] = input_getc();
+			read_size++;
+		}
+		return read_size;
+	}
+	else if (fd == 1) {
+		return -1;
+	}
+	else if (fd >= 2) {
+		struct file *get_fl = fd_to_file(fd);
+		
+		if(get_fl != NULL) {
+			int read_size = file_read(get_fl, buffer, size);
+
+			return read_size;
+		}
+	}
 	return -1;
 }
 
 static int
 syscall_write (int fd, const void *buffer, unsigned size) {
-	if (fd == 1) {
+	if(fd == 0) {
+		return -1;
+	}
+	else if (fd == 1) {
 		putbuf (buffer, size);
 		return size;
+	}
+	else if (fd >= 2) {
+		struct file *get_fl = fd_to_file(fd);
+
+		if(get_fl != NULL) {
+			return file_write(get_fl, buffer, size);
+		}
 	}
 	return -1;
 }
 
 static void
-syscall_seek (int fd UNUSED, unsigned position UNUSED) {
+syscall_seek (int fd , unsigned position ) {
+	if(fd >= 2) {
+		struct file *get_fl = fd_to_file(fd);
+		if(get_fl != NULL) {
+			file_seek(get_fl, position);
+		}
+	}
 }
 
 static unsigned
-syscall_tell (int fd UNUSED) {
-	return 0;
+syscall_tell (int fd ) {
+	if(fd >= 2) {
+		struct file *get_fl = fd_to_file(fd);
+		if(get_fl != NULL) {
+			off_t cur_pos = file_tell(get_fl);
+			return cur_pos;
+		}
+	}
+	return -1;
 }
 
 static void
