@@ -29,7 +29,7 @@ typedef int tid_t;
 #define PRI_MIN 0        /* Lowest priority. */
 #define PRI_DEFAULT 31   /* Default priority. */
 #define PRI_MAX 63       /* Highest priority. */
-#define FD_MAX 128      /* 프로세스당 열 수 있는 파일 최대 개수 */
+#define FD_MAX 64      /* 프로세스당 열 수 있는 파일 최대 개수 */
 
 /* A kernel thread or user process.
  *
