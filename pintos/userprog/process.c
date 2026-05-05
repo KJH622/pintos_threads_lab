@@ -36,6 +36,9 @@ struct initd_info {
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+    for (int i = 0; i < FD_MAX; i++) {
+        current->fd_table[i] = NULL;
+    }
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
