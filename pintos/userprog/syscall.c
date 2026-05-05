@@ -10,6 +10,8 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
 
 
 void syscall_entry (void);
@@ -32,6 +34,10 @@ static tid_t syscall_fork (const char *thread_name, struct intr_frame *f);
 static void syscall_halt (void);
 static void syscall_invalid (void);
 static tid_t syscall_spawn (const char *cmdline);
+
+static void check_address (const void *uaddr);
+static void check_string (const char *str);
+static void check_buffer (const void *buffer, unsigned size);
 
 /* System call.
  *
@@ -227,4 +233,30 @@ syscall_invalid (void) {
 static tid_t
 syscall_spawn (const char *cmdline) {
 	return process_create_initd (cmdline);
+}
+
+static void
+check_address (const void *uaddr) {
+	if (uaddr == NULL || !is_user_vaddr (uaddr) || pml4_get_page (thread_current ()->pml4, uaddr) == NULL) {
+		syscall_exit (-1);
+	}
+}
+
+static void
+check_string (const char *str) {
+	check_address (str);
+
+	while (*str != '\0') {
+		str++;
+		check_address (str);
+	}
+}
+
+static void
+check_buffer (const void *buffer, unsigned size) {
+	const char *buf = buffer;
+
+	for (unsigned i = 0; i < size; i++) {
+		check_address (buf + i);
+	}
 }
