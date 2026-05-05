@@ -150,15 +150,15 @@ syscall_exit (int status) {
 
 static tid_t
 syscall_exec (const char *file) {
+	check_string(file);
 	char *fn_copy = palloc_get_page (0); 
-
 	if (fn_copy == NULL)
 		return -1;
 
 	strlcpy (fn_copy, file, PGSIZE);
 
 	if (process_exec (fn_copy) < 0)
-		return -1;
+		syscall_exit (-1);
 
 	NOT_REACHED ();
 }
