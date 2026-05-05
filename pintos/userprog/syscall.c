@@ -206,7 +206,7 @@ syscall_close (int fd UNUSED) {
 
 static tid_t
 syscall_fork (const char *thread_name UNUSED, struct intr_frame *f UNUSED) {
-	return -1;
+	return process_fork (thread_name, f);
 }
 
 static void
