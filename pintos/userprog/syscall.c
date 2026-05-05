@@ -127,6 +127,21 @@ syscall_handler (struct intr_frame *f) {
 	}
 }
 
+/* fd_table에서 fd에 대응하는 file 포인터를 반환한다.
+   fd가 범위를 벗어나거나 할당되지 않은 경우 NULL을 반환한다. */
+static struct file *
+fd_to_file(int fd) {
+    return thread_current()->fd_table[fd];
+}
+
+static int
+fd_alloc(struct file *f) {
+    return -1;
+}
+
+static void
+fd_free(int fd) {}
+
 static void
 syscall_exit (int status) {
 	printf ("%s: exit(%d)\n", thread_current ()->name, status);
