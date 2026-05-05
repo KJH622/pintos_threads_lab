@@ -31,6 +31,7 @@ static void syscall_close (int fd);
 static tid_t syscall_fork (const char *thread_name, struct intr_frame *f);
 static void syscall_halt (void);
 static void syscall_invalid (void);
+static tid_t syscall_spawn (const char *cmdline);
 
 /* System call.
  *
@@ -123,6 +124,10 @@ syscall_handler (struct intr_frame *f) {
 			syscall_close ((int) f->R.rdi);
 			break;
 
+		case SYS_SPAWN:
+			f->R.rax = syscall_spawn ((const char *) f->R.rdi);
+			break;
+		
 		default:
 			syscall_invalid ();
 			break;
@@ -139,7 +144,7 @@ syscall_exit (int status) {
 
 static tid_t
 syscall_exec (const char *file) {
-	char *fn_copy = palloc_get_page (0);
+	char *fn_copy = palloc_get_page (0); 
 
 	if (fn_copy == NULL)
 		return -1;
@@ -217,4 +222,9 @@ syscall_halt (void) {
 static void
 syscall_invalid (void) {
 	syscall_exit (-1);
+}
+
+static tid_t
+syscall_spawn (const char *cmdline) {
+	return process_create_initd (cmdline);
 }

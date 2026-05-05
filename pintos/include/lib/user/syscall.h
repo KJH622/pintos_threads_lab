@@ -78,4 +78,5 @@ get_fs_disk_write_cnt (void) {
 	return write_cnt;
 }
 
+pid_t spawn (const char *cmdline);
 #endif /* lib/user/syscall.h */

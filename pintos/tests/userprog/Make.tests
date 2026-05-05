@@ -14,6 +14,7 @@ read-normal read-bad-ptr read-boundary \
 read-zero read-stdout read-bad-fd write-normal write-bad-ptr		\
 write-boundary write-zero write-stdin write-bad-fd fork-once fork-multiple	\
 fork-recursive fork-read fork-close fork-boundary exec-once exec-arg \
+spawn-once \
 exec-boundary exec-missing exec-bad-ptr exec-read wait-simple wait-twice		\
 wait-killed wait-bad-pid multi-recurse multi-child-fd       \
 rox-simple rox-child rox-multichild bad-read bad-write bad-read2 bad-write2  \
@@ -97,7 +98,7 @@ tests/userprog/rox-simple_SRC = tests/userprog/rox-simple.c tests/main.c
 tests/userprog/rox-child_SRC = tests/userprog/rox-child.c tests/main.c
 tests/userprog/rox-multichild_SRC = tests/userprog/rox-multichild.c	\
 tests/main.c
-
+tests/userprog/spawn-once_SRC = tests/userprog/spawn-once.c tests/main.c
 tests/userprog/child-simple_SRC = tests/userprog/child-simple.c
 tests/userprog/child-args_SRC = tests/userprog/args.c
 tests/userprog/child-bad_SRC = tests/userprog/child-bad.c tests/main.c
@@ -143,3 +144,4 @@ tests/userprog/wait-killed_PUTFILES += tests/userprog/child-bad
 tests/userprog/rox-child_PUTFILES += tests/userprog/child-rox
 tests/userprog/rox-multichild_PUTFILES += tests/userprog/child-rox
 tests/userprog/exec-read_PUTFILES += tests/userprog/child-read
+tests/userprog/spawn-once_PUTFILES += tests/userprog/child-simple
