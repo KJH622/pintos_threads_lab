@@ -117,7 +117,6 @@ struct thread {
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                 /* Page map level 4 */
     struct file *fd_table[FD_MAX];  /*fd 번호 → struct file * 매핑 */
-    int fd_next;                    /* 다음에 줄 fd 번호 */
 
 	struct list children;
 	struct semaphore child_wait_sema;

@@ -35,7 +35,6 @@ process_init (void) {
     for (int i = 0; i < FD_MAX; i++) {
         current->fd_table[i] = NULL;
     }
-    current->fd_next = 2;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
