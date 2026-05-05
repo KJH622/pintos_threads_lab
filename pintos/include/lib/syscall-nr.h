@@ -36,6 +36,7 @@ enum {
 
 	SYS_MOUNT,
 	SYS_UMOUNT,
+	SYS_SPAWN,
 };
 
 #endif /* lib/syscall-nr.h */

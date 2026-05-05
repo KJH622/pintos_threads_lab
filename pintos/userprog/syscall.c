@@ -10,6 +10,8 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
 
 #include "devices/input.h"
 #include "threads/init.h"
@@ -35,6 +37,11 @@ static void syscall_close (int fd);
 static tid_t syscall_fork (const char *thread_name, struct intr_frame *f);
 static void syscall_halt (void);
 static void syscall_invalid (void);
+static tid_t syscall_spawn (const char *cmdline);
+
+static void check_address (const void *uaddr);
+static void check_string (const char *str);
+static void check_buffer (const void *buffer, unsigned size);
 
 /* System call.
  *
@@ -127,6 +134,10 @@ syscall_handler (struct intr_frame *f) {
 			syscall_close ((int) f->R.rdi);
 			break;
 
+		case SYS_SPAWN:
+			f->R.rax = syscall_spawn ((const char *) f->R.rdi);
+			break;
+		
 		default:
 			syscall_invalid ();
 			break;
@@ -173,15 +184,15 @@ syscall_exit (int status) {
 
 static tid_t
 syscall_exec (const char *file) {
-	char *fn_copy = palloc_get_page (0);
-
+	check_string(file);
+	char *fn_copy = palloc_get_page (0); 
 	if (fn_copy == NULL)
 		return -1;
 
 	strlcpy (fn_copy, file, PGSIZE);
 
 	if (process_exec (fn_copy) < 0)
-		return -1;
+		syscall_exit (-1);
 
 	NOT_REACHED ();
 }
@@ -327,4 +338,35 @@ syscall_halt (void) {
 static void
 syscall_invalid (void) {
 	syscall_exit (-1);
+}
+
+static tid_t
+syscall_spawn (const char *cmdline) {
+	return process_create_initd (cmdline);
+}
+
+static void
+check_address (const void *uaddr) {
+	if (uaddr == NULL || !is_user_vaddr (uaddr) || pml4_get_page (thread_current ()->pml4, uaddr) == NULL) {
+		syscall_exit (-1);
+	}
+}
+
+static void
+check_string (const char *str) {
+	check_address (str);
+
+	while (*str != '\0') {
+		str++;
+		check_address (str);
+	}
+}
+
+static void
+check_buffer (const void *buffer, unsigned size) {
+	const char *buf = buffer;
+
+	for (unsigned i = 0; i < size; i++) {
+		check_address (buf + i);
+	}
 }
