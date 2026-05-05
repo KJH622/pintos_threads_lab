@@ -19,7 +19,6 @@ static int syscall_wait (tid_t pid);
 static bool syscall_create (const char *file, unsigned initial_size);
 static bool syscall_remove (const char *file);
 static int syscall_open (const char *file);
-static struct file* fd_get_file(int fd);
 static int syscall_filesize (int fd);
 static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, const void *buffer, unsigned size);
@@ -176,24 +175,6 @@ syscall_remove (const char *file UNUSED) {
 	return false;
 }
 
-// 현 기능 작동을 위한 Stub Code
-static struct file*
-fd_get_file(int fd) {
-
-	struct thread *cur_thd = thread_current();
-	struct list *fdtbl = &cur_thd->fd_table;
-
-	if(fd >= 2) {
-		for(struct list_elem *e = list_begin(fdtbl); e != list_end(fdtbl); e = list_next(e)) {
-			struct fd_entry *return_fd = list_entry(e, struct fd_entry, elem);
-
-			if(return_fd->fd == fd) {
-				return return_fd->file;
-			} 
-		}
-	}
-	return NULL;
-}
 
 static int
 syscall_open (const char *file) {
@@ -219,18 +200,14 @@ syscall_read (int fd , void *buffer , unsigned size ) {
 		if fail, return -1
 	*/
 
-	struct thread *cur_thd = thread_current();
-	struct list *fdtbl = &cur_thd->fd_table;
-
 	if(fd == 0) {
-		uint8_t 
 	}
 	else if (fd == 1) {
 		// 표준 출력으로 기능 X
 		return -1;
 	}
 	else if (fd >= 2) {
-		struct file *get_fl = fd_get_file(fd);
+		struct file *get_fl = fd_to_file(fd);
 		
 		if(get_fl != NULL) {
 			// open 된 파일 읽기
@@ -262,7 +239,7 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 
 	}
 	else if (fd >= 2) {
-		struct file *get_fl = fd_get_file(fd);
+		struct file *get_fl = fd_to_file(fd);
 		
 		if(get_fl != NULL) {
 			// open 된 파일에 쓰기
