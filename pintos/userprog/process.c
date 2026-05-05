@@ -27,10 +27,15 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
-/* General process initializer for initd and other process. */
+/* 현재 프로세스의 파일 디스크립터 테이블을 초기화한다.
+   표준 입력/출력을 예약하기 위해 다음 할당 fd는 2부터 시작한다. */
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+    for (int i = 0; i < FD_MAX; i++) {
+        current->fd_table[i] = NULL;
+    }
+    current->fd_next = 2;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
