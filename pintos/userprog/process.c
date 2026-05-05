@@ -27,6 +27,12 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+struct initd_info {
+	char *file_name;
+	struct child_info *child_info;
+};
+
+/* General process initializer for initd and other process. */
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
@@ -45,7 +51,8 @@ process_create_initd (const char *file_name) {
 	char *fn_copy;
 	char *name_copy;
 	char *save_ptr;
-	tid_t tid;
+	struct initd_info *info;
+	struct child_info *child;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
@@ -53,41 +60,133 @@ process_create_initd (const char *file_name) {
 	fn_copy = palloc_get_page (0);
 	name_copy = palloc_get_page(0);
 
-	if (fn_copy == NULL)
+	info = malloc (sizeof *info);
+	child = malloc (sizeof *child);
+
+	if (fn_copy == NULL || name_copy == NULL || info == NULL || child == NULL) {
+		if (fn_copy != NULL)
+			palloc_free_page (fn_copy);
+		if (name_copy != NULL)
+			palloc_free_page (name_copy);
+		if (info != NULL)
+			free (info);
+		if (child != NULL)
+			free (child);
 		return TID_ERROR;
+	}
 	strlcpy (fn_copy, file_name, PGSIZE);
 	strlcpy (name_copy, file_name, PGSIZE);
 
+	info->file_name=fn_copy;
+	info->child_info=child;
+
+	child->tid = TID_ERROR;
+	child->exit_status = -1;
+	child->exited = false;
+	child->waited = false;
+	child->load_success = false;
+	sema_init (&child->load_sema, 0);
+	child->parent = thread_current ();
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (strtok_r(name_copy, " ", &save_ptr), PRI_DEFAULT, initd, fn_copy);
-	palloc_free_page(name_copy);
-	if (tid == TID_ERROR)
+	child->tid = thread_create (strtok_r(name_copy, " ", &save_ptr), PRI_DEFAULT, initd, info);
+	if (child->tid == TID_ERROR){
 		palloc_free_page (fn_copy);
-	return tid;
+		palloc_free_page (name_copy);
+		free (info);
+		free (child);
+		return TID_ERROR;
+	}
+	
+	list_push_back (&thread_current ()->children, &child->elem);
+	palloc_free_page(name_copy);
+	sema_down (&child->load_sema);
+	free (info);
+	if (!child->load_success) return TID_ERROR;
+	
+	return child->tid;
 	
 }
 
 /* A thread function that launches first user process. */
 static void
-initd (void *f_name) {
+initd (void *initd_info) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-
+	struct initd_info *info = initd_info;
+	char *file_name = info->file_name;
+	thread_current ()->child_info = info->child_info;
 	process_init ();
-
-	if (process_exec (f_name) < 0)
-		PANIC("Fail to launch initd\n");
+	
+	if (process_exec (file_name) < 0) thread_exit ();
 	NOT_REACHED ();
 }
+
+struct fork_info {
+    struct intr_frame parent_if;
+    struct child_info *child_info;
+};
 
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+
+	struct child_info *child;
+	struct fork_info *fork_info;
+
+	child = malloc (sizeof *child);
+	fork_info = malloc (sizeof *fork_info);
+
+	if (child == NULL || fork_info == NULL){
+	    return TID_ERROR;
+	}
+
+	// child_info 초기화
+	child->tid = TID_ERROR;				// 자식 tid 저장용
+	child->exit_status = -1;			// 자식 종료 상태 저장용
+	child->exited = false;				// 자식 종료 여부
+	child->waited = false;				// wait 중복 호출 방지용
+	child->load_success = false;		// fork 복제 성공 여부
+	sema_init (&child->load_sema, 0);	// fork 복제 완료 대기용
+	child->parent = thread_current ();	// 부모 스레드 저장
+
+	// fork_info 초기화 
+	memcpy (&fork_info->parent_if, if_, sizeof *if_);	//intr_frame 복제용
+	fork_info -> child_info = child;					//성공 실패 저장용
+
+	// 자식 스레드 생성 
+	child->tid = thread_create (name, PRI_DEFAULT, __do_fork, fork_info);
+
+	if (child->tid == TID_ERROR) {
+		
+    	free(child);
+		free (fork_info);
+
+		return TID_ERROR;
+	}
+
+	// 자식 목록 등록 
+	list_push_back (&thread_current ()->children, &child->elem);
+	// 자식 복제 완료 대기 
+	sema_down (&child->load_sema);
+
+	// 자식 복제 실패 처리 
+	if (!child->load_success) {
+		
+		list_remove(&child->elem);
+    	free(child);
+		free (fork_info);
+
+		return TID_ERROR;
+	}
+
+	// 임시 fork 정보 해제 
+	free (fork_info);
+
+	return child->tid;
 }
 
 #ifndef VM
@@ -102,22 +201,36 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if (is_kernel_vaddr (va)){
+		return true;
+	}    
+
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
+	if (parent_page == NULL)
+		return false;
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page (PAL_USER);
+	if (newpage == NULL)
+		return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy (newpage, parent_page, PGSIZE);
+	writable = is_writable (pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		palloc_free_page (newpage);
+		return false;
 	}
+
 	return true;
 }
 #endif
@@ -128,29 +241,42 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
+	struct fork_info *fork_info = aux;						//process_fork에서 넘긴 fork_info
+	struct child_info *child_info = fork_info->child_info;	//이번 자식의 상태 기록표
+	struct thread *parent = child_info->parent;				//부모 thread
 	struct intr_frame if_;
-	struct thread *parent = (struct thread *) aux;
-	struct thread *current = thread_current ();
-	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
-	bool succ = true;
 
-	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	thread_current() -> child_info = child_info;
 
-	/* 2. Duplicate PT */
-	current->pml4 = pml4_create();
-	if (current->pml4 == NULL)
+	// 부모의 유저 실행 상태 복사
+	// rip  = fork syscall이 끝난 뒤 돌아갈 유저 코드 위치
+	// rsp  = 부모의 유저 스택 위치
+	// rdi/rsi/rdx/... = syscall 당시 레지스터 값들
+	// rax  = syscall 번호 또는 반환값으로 쓸 자리
+	// cs/ss/eflags = 유저모드 복귀에 필요한 CPU 상태
+	// fork 이후 자식도 부모와 같은 유저 코드 위치에서 실행되어야 하므로,
+	// 부모의 intr_frame(rip, rsp, 일반 레지스터 등)을 자식용 if_에 복사한다.
+	memcpy (&if_, &fork_info -> parent_if, sizeof (struct intr_frame));
+
+	// 현재 실행 중인 자식 thread의 pml4 필드에
+	// 새로 만든 pml4를 넣는다
+	thread_current() -> pml4 = pml4_create();
+	if (thread_current() -> pml4 == NULL){
 		goto error;
+	}
 
-	process_activate (current);
+	// 이후 자식 pml4에 페이지를 매핑할 수 있도록
+	// CPU의 주소 변환 기준을 자식 pml4로 바꾼다.
+	process_activate (thread_current());
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
 #else
-	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
+	// 부모 주소 공간 복제
+	if (!pml4_for_each (parent->pml4, duplicate_pte, parent)){
 		goto error;
+	}
 #endif
 
 	/* TODO: Your code goes here.
@@ -161,10 +287,20 @@ __do_fork (void *aux) {
 
 	process_init ();
 
-	/* Finally, switch to the newly created process. */
-	if (succ)
-		do_iret (&if_);
+	// 자식의 fork 반환값은 0
+	if_.R.rax = 0;
+
+	// 부모에게 fork 복제 성공 알림
+	child_info->load_success = true;
+	sema_up (&child_info->load_sema);
+
+	// 자식은 fork 다음 줄로 유저모드 복귀
+	do_iret (&if_);
+
 error:
+	//에러가 나더라도 부모는 일어나야 됨
+	child_info->load_success = false;
+    sema_up (&child_info->load_sema);
 	thread_exit ();
 }
 
@@ -191,6 +327,11 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
+	if (thread_current ()->child_info != NULL) {
+		thread_current ()->child_info->load_success = success;
+		sema_up (&thread_current ()->child_info->load_sema);
+	}
+
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -212,22 +353,44 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
-	timer_sleep(100);
-	 return -1;
+process_wait (tid_t child_tid) {
+	struct thread *curr=thread_current();
+	struct list_elem *e;
+	struct child_info *child = NULL;
+	int status;
+
+	for (e = list_begin (&curr->children);e != list_end (&curr->children);e = list_next (e)){
+		struct child_info *ctid = list_entry (e, struct child_info, elem);
+		if (ctid->tid == child_tid) {
+			child = ctid;
+			break;
+		}
+	}
+	
+	if (child == NULL) return -1;
+	if (child->waited) return -1;
+
+	child->waited = true;
+
+	while (!child->exited){
+		sema_down (&curr->child_wait_sema);
+	}
+
+	status = child->exit_status;
+	list_remove (&child->elem);
+	free (child);
+	return status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
+
+	if(curr->child_info){
+		curr->child_info->exited = true;
+		if (curr->child_info->parent != NULL) sema_up (&curr->child_info->parent->child_wait_sema);
+	}
 
 	process_cleanup ();
 }
@@ -264,9 +427,13 @@ process_cleanup (void) {
 void
 process_activate (struct thread *next) {
 	/* Activate thread's page tables. */
+	//CPU의 CR3 레지스터에 이 pml4를 넣어서 주소 변환 기준으로 삼게 함
 	pml4_activate (next->pml4);
 
 	/* Set thread's kernel stack for use in processing interrupts. */
+	//이후 커널 진입 시 사용할 커널 스택 정보를 현재 thread 기준으로 갱신
+	//다음 thread가 유저모드에서 커널모드로 들어올 때 사용할 커널 스택 꼭대기를 CPU에 알려주는 코드
+	//rsp0 값 바꿔줌
 	tss_update (next);
 }
 

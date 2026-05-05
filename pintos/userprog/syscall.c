@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -8,6 +9,8 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
+#include "threads/palloc.h"
+
 #include "devices/input.h"
 #include "threads/init.h"
 #include "filesys/file.h"  
@@ -162,13 +165,25 @@ fd_free(int fd) {
 
 static void
 syscall_exit (int status) {
+	struct thread *curr = thread_current ();
+	if (curr->child_info != NULL) curr->child_info->exit_status = status;
 	printf ("%s: exit(%d)\n", thread_current ()->name, status);
 	thread_exit ();
 }
 
 static tid_t
-syscall_exec (const char *file UNUSED) {
-	return -1;
+syscall_exec (const char *file) {
+	char *fn_copy = palloc_get_page (0);
+
+	if (fn_copy == NULL)
+		return -1;
+
+	strlcpy (fn_copy, file, PGSIZE);
+
+	if (process_exec (fn_copy) < 0)
+		return -1;
+
+	NOT_REACHED ();
 }
 
 static int
@@ -300,8 +315,8 @@ syscall_close (int fd) {
 }
 
 static tid_t
-syscall_fork (const char *thread_name UNUSED, struct intr_frame *f UNUSED) {
-	return -1;
+syscall_fork (const char *thread_name, struct intr_frame *f) {
+	return process_fork (thread_name, f);
 }
 
 static void

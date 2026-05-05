@@ -94,6 +94,8 @@ struct child_info {
 	int exit_status;
 	bool exited;
 	bool waited;
+	bool load_success;
+	struct semaphore load_sema;
 	struct thread *parent;
 	struct list_elem elem;
 };
