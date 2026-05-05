@@ -127,18 +127,25 @@ syscall_handler (struct intr_frame *f) {
 	}
 }
 
-/* fd_table에서 fd에 대응하는 file 포인터를 반환한다.
-   fd가 범위를 벗어나거나 할당되지 않은 경우 NULL을 반환한다. */
+/* fd_table에서 일반 파일 fd에 대응하는 file 포인터를 반환한다.
+   표준 입출력 fd와 범위를 벗어난 fd, 할당되지 않은 fd는 NULL을 반환한다. */
 static struct file *
 fd_to_file(int fd) {
+    if (fd < 2 || fd >= FD_MAX) { /* 각 syscall에서 따로 처리하도록 */
+        return NULL;
+    }
     return thread_current()->fd_table[fd];
 }
 
+/* 현재 스레드의 fd_table에서 빈 슬롯을 찾아 file을 등록하고,
+   할당된 fd 번호를 반환한다. 할당할 수 없으면 -1을 반환한다. */
 static int
 fd_alloc(struct file *f) {
     return -1;
 }
 
+/* 현재 스레드의 fd_table에서 fd에 해당하는 file 등록을 해제한다.
+   이후 같은 fd 번호는 다시 할당될 수 있다. */
 static void
 fd_free(int fd) {}
 
