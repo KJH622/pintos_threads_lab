@@ -27,10 +27,12 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
-/* General process initializer for initd and other process. */
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+    for (int i = 0; i < FD_MAX; i++) {
+        current->fd_table[i] = NULL;
+    }
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
