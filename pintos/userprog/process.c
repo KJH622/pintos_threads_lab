@@ -27,8 +27,8 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
-/* 현재 프로세스의 파일 디스크립터 테이블을 초기화한다.
-   표준 입력/출력을 예약하기 위해 다음 할당 fd는 2부터 시작한다. */
+/* 현재 프로세스의 파일 디스크립터 테이블을 빈 상태로 초기화한다.
+   fd 0과 1은 표준 입출력으로 각 syscall에서 별도로 처리한다. */
 static void
 process_init (void) {
 	struct thread *current = thread_current ();

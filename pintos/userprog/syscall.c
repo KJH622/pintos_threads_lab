@@ -195,9 +195,17 @@ syscall_create (const char *file, unsigned initial_size) {
     return filesys_create (file, initial_size);
 }
 
+/* 사용자 영역의 파일 이름 포인터를 검증한 뒤 파일을 삭제한다.
+   삭제 성공 여부를 반환한다. */
 static bool
-syscall_remove (const char *file UNUSED) {
-	return false;
+syscall_remove (const char *file) {
+    if (file == NULL) { /* NULL 포인터는 잘못된 사용자 접근으로 처리한다. */
+        syscall_exit(-1);
+    }
+    if (!is_user_vaddr(file)) { /* 커널 영역 주소 접근은 허용하지 않는다. */
+        syscall_exit(-1);
+    }
+    return filesys_remove(file); /* 파일 시스템에서 해당 파일을 삭제하고 결과를 반환한다. */
 }
 
 /* 사용자 영역의 파일 이름 포인터를 검증한 뒤 파일을 열고,
@@ -222,44 +230,24 @@ syscall_open (const char *file) {
     return fd;
 }
 
-
-
+/* fd에 해당하는 파일을 찾아 파일 크기를 반환한다.
+   유효하지 않은 fd이거나 열린 파일이 아니면 -1을 반환한다. */
 static int
 syscall_filesize (int fd) {
-    struct file *f = fd_to_file(fd);
-    if (f == NULL) {
+    struct file *f = fd_to_file(fd); /* fd로 열린 파일 포인터를 조회한다. */
+    if (f == NULL) { /* 조회 실패 시 잘못된 fd로 보고 실패를 반환한다. */
         return -1;
     }
-    return file_length(f);
+    return file_length(f); /* 파일 시스템에 저장된 파일 크기를 반환한다. */
 }
 
 static int
-syscall_read (int fd , void *buffer , unsigned size ) {
-
-	/*
-		fd 값에 읽기 기능 분기
-		fd = 0 , 키보드 입력
-		fd = 1 , X(출력 전용 fd값)
-		fd = 2 , 열린 파일 읽기
-
-		if fail, return -1
-	*/
-
+syscall_read (int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED) {
 	return -1;
 }
 
 static int
 syscall_write (int fd, const void *buffer, unsigned size) {
-
-	/*
-		fd 값에 쓰기 기능 분기
-		fd = 0 , X(입력 전용 fd값)
-		fd = 1 , 콘솔 출력
-		fd = 2 , 열린 파일 쓰기
-
-		if fail, return -1
-	*/
-
 	if (fd == 1) {
 		putbuf (buffer, size);
 		return size;
@@ -268,33 +256,19 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 }
 
 static void
-syscall_seek (int fd , unsigned position ) {
-
-	/*
-		Open(fd) 성공하여 struct 반환 시에만 가능
-		fd = 2 , 현재 fd 파일 position 위치로 이동
-
-		if fail, return
-	*/
-
+syscall_seek (int fd UNUSED, unsigned position UNUSED) {
 }
 
 static unsigned
-syscall_tell (int fd ) {
-
-	/*
-		Open(fd) 성공하여 struct 반환 시에만 가능
-		fd = 2 , 현재 fd 파일 위치 반환
-
-		if fail, return -1
-	*/
-
-
+syscall_tell (int fd UNUSED) {
 	return 0;
 }
 
+/* 유효한 fd라면 연결된 파일을 닫고 fd_table 슬롯을 비운다.
+   유효하지 않은 fd는 fd_free() 내부에서 무시된다. */
 static void
-syscall_close (int fd UNUSED) {
+syscall_close (int fd) {
+    fd_free(fd);
 }
 
 static tid_t
