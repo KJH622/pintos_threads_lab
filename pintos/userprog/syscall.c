@@ -222,6 +222,8 @@ syscall_open (const char *file) {
     return fd;
 }
 
+
+
 static int
 syscall_filesize (int fd) {
     struct file *f = fd_to_file(fd);
@@ -232,12 +234,32 @@ syscall_filesize (int fd) {
 }
 
 static int
-syscall_read (int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED) {
+syscall_read (int fd , void *buffer , unsigned size ) {
+
+	/*
+		fd 값에 읽기 기능 분기
+		fd = 0 , 키보드 입력
+		fd = 1 , X(출력 전용 fd값)
+		fd = 2 , 열린 파일 읽기
+
+		if fail, return -1
+	*/
+
 	return -1;
 }
 
 static int
 syscall_write (int fd, const void *buffer, unsigned size) {
+
+	/*
+		fd 값에 쓰기 기능 분기
+		fd = 0 , X(입력 전용 fd값)
+		fd = 1 , 콘솔 출력
+		fd = 2 , 열린 파일 쓰기
+
+		if fail, return -1
+	*/
+
 	if (fd == 1) {
 		putbuf (buffer, size);
 		return size;
@@ -246,11 +268,28 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 }
 
 static void
-syscall_seek (int fd UNUSED, unsigned position UNUSED) {
+syscall_seek (int fd , unsigned position ) {
+
+	/*
+		Open(fd) 성공하여 struct 반환 시에만 가능
+		fd = 2 , 현재 fd 파일 position 위치로 이동
+
+		if fail, return
+	*/
+
 }
 
 static unsigned
-syscall_tell (int fd UNUSED) {
+syscall_tell (int fd ) {
+
+	/*
+		Open(fd) 성공하여 struct 반환 시에만 가능
+		fd = 2 , 현재 fd 파일 위치 반환
+
+		if fail, return -1
+	*/
+
+
 	return 0;
 }
 

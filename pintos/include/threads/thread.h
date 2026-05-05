@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 #include "threads/synch.h"
+#include "filesys/file.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -98,6 +99,7 @@ struct child_info {
 };
 #endif
 struct lock;
+
 struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
@@ -111,8 +113,6 @@ struct thread {
 	struct lock *waiting_lock;     /* 현재 기다리는 lock. */
 	struct list donations;         /* 나에게 donation한 thread 목록. */
 	struct list_elem donation_elem;
-
-
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                 /* Page map level 4 */
