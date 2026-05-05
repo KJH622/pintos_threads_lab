@@ -9,6 +9,7 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -199,8 +200,19 @@ syscall_read (int fd , void *buffer , unsigned size ) {
 
 		if fail, return -1
 	*/
-
+	
 	if(fd == 0) {
+		int read_size = 0;
+
+		for(int i = 0; i < size; i++) {
+			((uint8_t *)buffer)[i] = input_getc();
+			read_size++;
+			/* 			****주의****
+				여기서 buffer에는 문자열 종료 기호(\0)가 없으므로,
+				유저 프로그램 쪽에서 사용할때 삽입하여서 사용해야함.
+			*/
+		}
+		return read_size;
 	}
 	else if (fd == 1) {
 		// 표준 출력으로 기능 X
@@ -211,13 +223,12 @@ syscall_read (int fd , void *buffer , unsigned size ) {
 		
 		if(get_fl != NULL) {
 			// open 된 파일 읽기
-			off_t read_size = file_read(get_fl, buffer, size);
+			int read_size = file_read(get_fl, buffer, size);
 
 			return read_size;
 		}
-		return -1;
 	}
-	
+	return -1;
 }
 
 static int
@@ -236,20 +247,16 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 		return -1;
 	}
 	else if (fd == 1) {
-
+		putbuf (buffer, size);
+		return size;
 	}
 	else if (fd >= 2) {
 		struct file *get_fl = fd_to_file(fd);
-		
+
 		if(get_fl != NULL) {
 			// open 된 파일에 쓰기
+			return file_write(get_fl, buffer, size);
 		}
-		return -1;
-	}
-
-	if (fd == 1) {
-		putbuf (buffer, size);
-		return size;
 	}
 	return -1;
 }
@@ -264,6 +271,12 @@ syscall_seek (int fd , unsigned position ) {
 		if fail, return
 	*/
 
+	if(fd >= 2) {
+		struct file *get_fl = fd_to_file(fd);
+		if(get_fl != NULL) {
+			file_seek(get_fl, position);
+		}
+	}
 }
 
 static unsigned
@@ -275,9 +288,14 @@ syscall_tell (int fd ) {
 		
 		if fail, return -1
 	*/
-
-
-	return 0;
+	if(fd >= 2) {
+		struct file *get_fl = fd_to_file(fd);
+		if(get_fl != NULL) {
+			off_t cur_pos = file_tell(get_fl);
+			return cur_pos;
+		}
+	}
+	return -1;
 }
 
 static void
