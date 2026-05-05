@@ -197,9 +197,6 @@ fd_get_file(int fd) {
 
 static int
 syscall_open (const char *file) {
-	
-	
-		
 	return -1;
 }
 
@@ -221,8 +218,29 @@ syscall_read (int fd , void *buffer , unsigned size ) {
 
 		if fail, return -1
 	*/
+
+	struct thread *cur_thd = thread_current();
+	struct list *fdtbl = &cur_thd->fd_table;
+
+	if(fd == 0) {
+		uint8_t 
+	}
+	else if (fd == 1) {
+		// 표준 출력으로 기능 X
+		return -1;
+	}
+	else if (fd >= 2) {
+		struct file *get_fl = fd_get_file(fd);
+		
+		if(get_fl != NULL) {
+			// open 된 파일 읽기
+			off_t read_size = file_read(get_fl, buffer, size);
+
+			return read_size;
+		}
+		return -1;
+	}
 	
-	return -1;
 }
 
 static int
@@ -236,6 +254,21 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 		
 		if fail, return -1
 	*/
+	if(fd == 0) {
+		// 표준 입력으로 기능 X
+		return -1;
+	}
+	else if (fd == 1) {
+
+	}
+	else if (fd >= 2) {
+		struct file *get_fl = fd_get_file(fd);
+		
+		if(get_fl != NULL) {
+			// open 된 파일에 쓰기
+		}
+		return -1;
+	}
 
 	if (fd == 1) {
 		putbuf (buffer, size);
